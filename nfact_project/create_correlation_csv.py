@@ -2,6 +2,7 @@ import pandas as pd
 import nilearn.image as img
 from nilearn.datasets import load_mni152_template
 import scipy.stats as stats
+from nilearn.maskers import NiftiMasker
 import glob
 import re
 import argparse
@@ -22,6 +23,12 @@ def args() -> dict:
        dictionary of args
     '''
     option = argparse.ArgumentParser()
+    option.add_argument('-C', '--correlation_type',
+                        dest='correlation_type',
+                        help="""What type of correlation to run. 
+                        Either just correlates from masks or does whole brain
+                        put as 'whole' or 'mask' """,
+                        type=str)
     option.add_argument('-i', '--image',
                         dest='image',
                         help='Abosulte path to image',
@@ -52,34 +59,108 @@ def args() -> dict:
                         type=str)
     return vars(option.parse_args())
 
+def correlation_type(corr_type: str) -> str:
+    """
+    Function to determine correlation type
+    
+    Parameters
+    ----------
+    corr_type: str
+        string of correlation type
+    
+    Returns
+    -------
+    str: string
+        string of correlation type
+    """
+    avail_type = ['whole', 'mask']    
+    if corr_type.lower() in avail_type:
+        print(f'Doing {corr_type.lower()} correlation')
+        return corr_type.lower()
+    
+    print(f'{corr_type.lower()} not avaiable Doing whole brain correlation')
+    return avail_type[0]
+   
+   
+        
+def mask_correlation(tract_mask, comp_img, tract_img) -> dict:
+    """
+    Fuction to extract signal from an 
+    anatomical mask.
+
+    Parameters
+    ----------
+    tract_mask: NIFIT img
+        binarized mask of tract
+    comp_img: NIFIT image
+        component nifit
+    tract_img: NIFIT image
+        tract image
+    """
+    nifti_masker = NiftiMasker(
+        mask_img=tract_mask,
+        standardize=False, 
+        memory="nilearn_cache")
+    return {
+        'component': nifti_masker.fit_transform(comp_img),
+        'tract': nifti_masker.fit_transform(tract_img)
+    }
+
+
+def whole_brain_correlation(comp_img, tract_img) -> dict:
+    """
+    Function to return whole brain correlation
+
+    Parameters
+    ----------
+    comp_img: NIFIT image
+        component nifit
+    tract_img: NIFIT image
+        tract image
+    """
+    return {
+        'component': comp_img.get_fdata().ravel(),
+        'tract': tract_img.get_fdata().ravel()
+    }
+
 if __name__=='__main__':
     options = args()
     nfm = img.load_img(options['image'])
-    template = load_mni152_template(resolution=1)
+    corr_type = correlation_type(options['correlation_type'])
+
+    if corr_type == 'whole':
+        template = load_mni152_template(resolution=1)
+    
     atlas = glob.glob(f"{options['atlas']}/*.nii.gz")
     pattern = re.compile(r'/(?P<word>[^/]+)\.nii\.gz')
     key = [match.group('word') for path in atlas if (match := pattern.search(path))]
-    correlation_dict = dict(zip(key, [[] for at in key]))
-
     n_components = options['number_of_components']
     correlation_dict = dict(zip(key, [[] for at in key]))
     
-    
     for tract_img in atlas:
         tract = img.load_img(tract_img)
-        resample_tract = img.resample_to_img(tract, template, interpolation='nearest')
+        if corr_type == 'whole':
+            resample_tract = img.resample_to_img(tract, template, interpolation='nearest')
+        if corr_type == 'mask':
+            tract_mask = img.binarize_img(tract)
+
         name = re.findall(r'/(?P<word>[^/]+)\.nii\.gz', tract_img)[0]
         print(f'Working on {name}')
         for component in range(0, n_components):
             print(component, end='\r')
             comp = img.index_img(nfm, component)
-            resample_component = img.resample_to_img(comp, template, interpolation='nearest')
-            if options['threshold']:
-                resample_component = img.threshold_img(img.resample_to_img(comp, template, 
+            if corr_type == 'whole':
+                resample_component = img.resample_to_img(comp, template, interpolation='nearest')
+                if options['threshold']:
+                    resample_component = img.threshold_img(img.resample_to_img(comp, template, 
                                                                            interpolation='nearest'), 
-                                                        threshold=1)
-            correlation_dict[name].append(stats.pearsonr(resample_component.get_fdata().ravel(), 
-                                                         resample_tract.get_fdata().ravel())[0])
+                                                            threshold=1)
+                corr_xy =  whole_brain_correlation(resample_component, resample_tract)
+            if corr_type == 'mask':
+                corr_xy= mask_correlation(tract_mask, tract)
+            breakpoint()
+            correlation_dict[name].append(stats.pearsonr(corr_xy['tract'], 
+                                                         corr_xy['component'])[0])
     print(f'Saving csv to {options["csv"]}')
     csv_name = 'correlations_to_tracts.csv'
     if options['threshold']:
