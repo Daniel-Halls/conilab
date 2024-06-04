@@ -51,8 +51,8 @@ def args() -> dict:
                         type=str)
     option.add_argument('-t', '--threshold',
                         dest='threshold',
-                        help='Whether to threshold the image components before running correlations',
-                        action='store_true')
+                        help='Whether to threshold the image components before running correlations and set threshold',
+                        type=float)
     option.add_argument('--csv_name',
                         dest='csv_name',
                         help='What to name the csv. Default is correlations_to_tracts or correlations_to_tracts_thresholded',
@@ -74,11 +74,14 @@ def correlation_type(corr_type: str) -> str:
         string of correlation type
     """
     avail_type = ['whole', 'mask']    
+    if not corr_type:
+        print(f'no -C given. Doing whole brain correlation')
+        return avail_type[0]
     if corr_type.lower() in avail_type:
         print(f'Doing {corr_type.lower()} correlation')
         return corr_type.lower()
     
-    print(f'{corr_type.lower()} not avaiable Doing whole brain correlation')
+    print(f'{corr_type.lower()} not avaiable as correlation type. Doing whole brain correlation')
     return avail_type[0]
    
    
@@ -149,18 +152,15 @@ if __name__=='__main__':
         for component in range(0, n_components):
             print(component, end='\r')
             comp = img.index_img(nfm, component)
+            if options['threshold']:
+                    comp = img.threshold_img(comp, threshold=options['threshold'])
             if corr_type == 'whole':
                 resample_component = img.resample_to_img(comp, template, interpolation='nearest')
-                if options['threshold']:
-                    resample_component = img.threshold_img(img.resample_to_img(comp, template, 
-                                                                           interpolation='nearest'), 
-                                                            threshold=1)
                 corr_xy =  whole_brain_correlation(resample_component, resample_tract)
             if corr_type == 'mask':
-                corr_xy= mask_correlation(tract_mask, tract)
-            breakpoint()
-            correlation_dict[name].append(stats.pearsonr(corr_xy['tract'], 
-                                                         corr_xy['component'])[0])
+                corr_xy= mask_correlation(tract_mask, comp, tract)
+            correlation_dict[name].append(stats.pearsonr(corr_xy['tract'][0], 
+                                                         corr_xy['component'][0])[0])
     print(f'Saving csv to {options["csv"]}')
     csv_name = 'correlations_to_tracts.csv'
     if options['threshold']:

@@ -9,7 +9,7 @@ name = "conilab"
 version = "1.0.0"
 description = "conilab"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = {file = "LICENSE"}
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
