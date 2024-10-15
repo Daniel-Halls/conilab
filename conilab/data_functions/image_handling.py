@@ -2,9 +2,8 @@ import nibabel as nib
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
-def save_nifti(data: np.array, 
-               affine: np.array, 
-               filename: str) -> None:
+
+def save_nifti(data: np.array, affine: np.array, filename: str) -> None:
     """
     Function to save nifit file
 
@@ -13,12 +12,13 @@ def save_nifti(data: np.array,
     data: np.array
         array of data to save as image
     affine: np.array
-        affine of image 
+        affine of image
     filename: str
-        filename of image to save 
+        filename of image to save
     """
     new_img = nib.Nifti1Image(data.astype(np.float32), affine)
     nib.save(new_img, filename)
+
 
 def normalization(img_data: np.array) -> np.array:
     """
@@ -28,7 +28,7 @@ def normalization(img_data: np.array) -> np.array:
     ----------
     img_data: np.array
         array of data to normalise
-    
+
     Returns
     -------
     zscores: np.array
@@ -36,11 +36,10 @@ def normalization(img_data: np.array) -> np.array:
         to be saved as a imge
     """
     n_voxels = np.prod(img_data.shape[:-1])
-    n_vol = img_data.shape[-1]  
-    reshaped_data = img_data.reshape(n_voxels, n_vol)  
-    z_scores = StandardScaler().fit_transform(reshaped_data) 
-    return z_scores.reshape(img_data.shape) 
-
+    n_vol = img_data.shape[-1]
+    reshaped_data = img_data.reshape(n_voxels, n_vol)
+    z_scores = StandardScaler().fit_transform(reshaped_data)
+    return z_scores.reshape(img_data.shape)
 
 
 def remove_negative(img_path: str, img_name: str) -> None:
@@ -51,10 +50,10 @@ def remove_negative(img_path: str, img_name: str) -> None:
     Parameters
     ----------
     img_path: str
-        str to path 
+        str to path
     img_name: str
         str of img name
-    
+
     Returns
     -------
     None

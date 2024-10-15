@@ -41,10 +41,10 @@ def calculate_coverage(img_path: str, bin_mask: str) -> float:
     Parameters
     ----------
     img_path: str
-        path to image 
+        path to image
     bin_mask: str
         path to mask
-    
+
     Returns
     --------
     float: float
@@ -56,6 +56,7 @@ def calculate_coverage(img_path: str, bin_mask: str) -> float:
     total_brain_voxels = np.sum(brain_mask != 0)
     return (non_zero_voxels / total_brain_voxels) * 100
 
+
 def coverage_map(img_path: str, img_name: str, threshold: int):
     """
     Function to create a binary coverage mask
@@ -64,12 +65,12 @@ def coverage_map(img_path: str, img_name: str, threshold: int):
     Parameters
     ----------
     img_path: str
-        path to image 
+        path to image
     img_name: str
         name of image
     threshold: int
         value to thres
-    
+
     Returns
     --------
     float: float
@@ -78,12 +79,11 @@ def coverage_map(img_path: str, img_name: str, threshold: int):
     img_comp = nib.load(img_path)
     img_data = img_comp.get_fdata()
     zscores = normalization(img_data)
-    binary_masks = np.abs(zscores) > threshold  
-    coverage_map = np.sum(binary_masks, axis=-1) 
+    binary_masks = np.abs(zscores) > threshold
+    coverage_map = np.sum(binary_masks, axis=-1)
     save_nifti(coverage_map, img_comp.affine, img_name)
     coverage_map_mask = np.any(binary_masks, axis=-1).astype(np.uint8)
-    image_name_mask = os.path.join(os.path.dirname(img_name), f"mask_{os.path.basename(img_name)}")
-    save_nifti(coverage_map_mask, img_comp.affine,  image_name_mask)
-
-
-
+    image_name_mask = os.path.join(
+        os.path.dirname(img_name), f"mask_{os.path.basename(img_name)}"
+    )
+    save_nifti(coverage_map_mask, img_comp.affine, image_name_mask)

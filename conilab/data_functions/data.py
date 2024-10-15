@@ -1,5 +1,6 @@
 import pandas as pd
 
+
 def reorganise_df(df: pd.DataFrame) -> pd.DataFrame:
     """
     Function to re-organise a dataframe by max row
@@ -9,28 +10,27 @@ def reorganise_df(df: pd.DataFrame) -> pd.DataFrame:
     ----------
     df: pd.DataFrame
         dataframe of values
-    
+
     Returns
     -------
     df: pd.Dataframe
         re-organised dataframe
     """
-    df['max'] = df.max(axis=1)
-    df = df.sort_values(by='max', ascending=False).drop(columns=['max'])
+    df["max"] = df.max(axis=1)
+    df = df.sort_values(by="max", ascending=False).drop(columns=["max"])
     max_col = df.max()
     sorted_columns = max_col.sort_values(ascending=False).index
     return df[sorted_columns]
 
-def create_correlation_table(df: pd.DataFrame, 
-                             col1: str, 
-                             col2: str) -> pd.DataFrame:
+
+def create_correlation_table(df: pd.DataFrame, col1: str, col2: str) -> pd.DataFrame:
     """
     Function to get correlation table
 
     Parameters
     ----------
     df: pd.DataFrame
-        dataframe of correlation values 
+        dataframe of correlation values
     col1: str
         name of column of tracts
     col2: str
@@ -38,8 +38,9 @@ def create_correlation_table(df: pd.DataFrame,
 
     """
     max_indices = df.idxmax()
-    max_values = {col: [max_indices[col], 
-                        df[col].loc[max_indices[col]]] for col in df.columns}
+    max_values = {
+        col: [max_indices[col], df[col].loc[max_indices[col]]] for col in df.columns
+    }
     return pd.DataFrame(max_values).T.rename(columns={0: col1, 1: col2})
 
 
@@ -52,7 +53,7 @@ def organise_keys(dictionary: dict) -> dict:
     ----------
     dictionary: dict
        dictionary
-    
+
     Returns
     -------
     dict: dictionary
