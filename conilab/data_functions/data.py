@@ -41,3 +41,21 @@ def create_correlation_table(df: pd.DataFrame,
     max_values = {col: [max_indices[col], 
                         df[col].loc[max_indices[col]]] for col in df.columns}
     return pd.DataFrame(max_values).T.rename(columns={0: col1, 1: col2})
+
+
+def organise_keys(dictionary: dict) -> dict:
+    """
+    Function to organise keys of
+    a dictionary
+
+    Parameters
+    ----------
+    dictionary: dict
+       dictionary
+    
+    Returns
+    -------
+    dict: dictionary
+        orgnaised dict
+    """
+    return {key: dictionary[key] for key in sorted(dictionary.keys())}

@@ -8,6 +8,7 @@ import re
 import argparse
 import warnings
 warnings.filterwarnings("ignore")
+import sys
 
 def args() -> dict:
     '''
@@ -57,6 +58,10 @@ def args() -> dict:
                         dest='csv_name',
                         help='What to name the csv. Default is correlations_to_tracts or correlations_to_tracts_thresholded',
                         type=str)
+    if len(sys.argv) == 1:
+        option.print_help(sys.stderr)
+        sys.exit(1)
+        
     return vars(option.parse_args())
 
 def correlation_type(corr_type: str) -> str:
@@ -126,7 +131,8 @@ def whole_brain_correlation(comp_img, tract_img) -> dict:
         'tract': tract_img.get_fdata().ravel()
     }
 
-if __name__=='__main__':
+def main():
+
     options = args()
     nfm = img.load_img(options['image'])
     corr_type = correlation_type(options['correlation_type'])
@@ -170,5 +176,8 @@ if __name__=='__main__':
     df = pd.DataFrame(correlation_dict, index=[f'component_{comp}'for comp in range(0,len(correlation_dict['cbt_l']))]).T
     df.to_csv(f'{options["csv"]}/{csv_name}') 
     print('Done')
+
+if __name__=='__main__':
+    main()
 
     
