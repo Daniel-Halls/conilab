@@ -87,3 +87,57 @@ def coverage_map(img_path: str, img_name: str, threshold: int):
         os.path.dirname(img_name), f"mask_{os.path.basename(img_name)}"
     )
     save_nifti(coverage_map_mask, img_comp.affine, image_name_mask)
+
+
+def gifti_grey_coverage(hitmap_path: str) -> float:
+    """
+    Calculate the percentage coverage
+    from a hitmap
+
+    Parameters
+    ----------
+    hitmap_path: str
+        path to hitmap
+
+    Returns
+    -------
+    float: float
+        percentage as a float
+        of coverage
+    """
+    hitmap = nib.load(hitmap_path)
+    data_gm = hitmap.darrays[0].data
+    return data_gm[data_gm > 0].shape[0] / data_gm.shape[0] * 100
+
+
+def creat_gifti_hitmap(seed_path: str, filename: str) -> None:
+    """
+    Function to create hitmap from
+    seed.
+
+    Parameters
+    ----------
+    seed_path: str
+        str of path to seed
+    filename: str
+        name of file. Does not
+        need .func.gii
+
+    Returns
+    -------
+    None
+    """
+    seed = nib.load(seed_path)
+    combinearray = np.array(
+        [seed.darrays[idx].data for idx, _ in enumerate(seed.darrays)]
+    )
+    hitmap = np.sum(combinearray > 0, axis=0)
+    darrays = [
+        nib.gifti.GiftiDataArray(
+            hitmap,
+            datatype="NIFTI_TYPE_FLOAT32",
+            intent=2001,
+            meta=seed.darrays[0].meta,
+        )
+    ]
+    nib.gifti.GiftiImage(darrays=darrays).to_filename(f"{filename}.func.gii")
