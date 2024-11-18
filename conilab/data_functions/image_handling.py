@@ -3,6 +3,32 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 
 
+def save_gifti(data: np.ndarray, output_path: str) -> None:
+    """
+    Function to save an array as a gifti
+    file
+
+    Parameters
+    ----------
+    data: np.ndarray
+        numpy arrray of data to save
+    output_path: str
+        str to save image to
+
+    Returns
+    -------
+    None
+    """
+    gifti_image = nib.gifti.GiftiImage()
+    [
+        gifti_image.add_gifti_data_array(
+            nib.gifti.GiftiDataArray(data=vol.astype(np.float32))
+        )
+        for vol in data
+    ]
+    nib.save(gifti_image, output_path)
+
+
 def save_nifti(data: np.array, affine: np.array, filename: str) -> None:
     """
     Function to save nifti file from a
@@ -217,3 +243,103 @@ def threshold_map(img_path: str, img_name: str, percentile: int):
     )
     new_img = nib.Nifti1Image(thresholded_data, img_map.affine, img_map.header)
     nib.save(new_img, img_name)
+
+
+def cifti_header_axis(cifti_img: object) -> object:
+    """
+    Function to return
+    nibabel.cifti2.cifti2_axes.BrainModelAxis
+    header
+
+    Parameters
+    ----------
+    cifti_img: nib.object
+        loaded cifti file
+
+    Returns
+    -------
+    onject: nibabel.cifti2.cifti2_axes.BrainModelAxis
+    """
+    return [cifti_img.header.get_axis(axis) for axis in range(cifti_img.ndim)][1]
+
+
+def surf_data_from_cifti(data: np.ndarray, axis: object, surf_name: str) -> np.ndarray:
+    """
+    Function to get surface data from cifti
+
+    Parameters
+    ----------
+    data: np.ndarray
+        np.array of imaging data
+    axis: nibabel.cifti2.cifti2_axes.BrainModelAxis
+    surf_name: str
+        string of surface name.
+
+    Returns
+    -------
+    surf_data: np.ndarray
+        np.array of surface data
+    """
+    assert isinstance(axis, nib.cifti2.BrainModelAxis)
+    for name, data_indices, model in axis.iter_structures():
+        if name == surf_name:
+            data = data.T[data_indices]
+            vtx_indices = model.vertex
+            surf_data = np.zeros(
+                (vtx_indices.max() + 1,) + data.shape[1:], dtype=data.dtype
+            )
+            surf_data[vtx_indices] = data
+            return surf_data
+    raise ValueError(f"No structure named {surf_name}")
+
+
+def volume_from_cifti(data: np.ndarray, axis: object) -> object:
+    """
+    Function to return the nifti from a cifti
+
+    Parameters
+    ----------
+    data: np.ndarray
+        np.array of imaging data
+    axis: nibabel.cifti2.cifti2_axes.BrainModelAxis
+
+    Returns
+    -------
+    object: nib.Nifti1Image
+        nifti image
+    """
+    assert isinstance(axis, nib.cifti2.BrainModelAxis)
+    data = data.T[axis.volume_mask]
+    volmask = axis.volume_mask
+    vox_indices = tuple(axis.voxel[axis.volume_mask].T)
+    vol_data = np.zeros(axis.volume_shape + data.shape[1:], dtype=data.dtype)
+    vol_data[vox_indices] = data
+    return nib.Nifti1Image(vol_data, axis.affine)
+
+
+def decompose_cifti(img: object) -> dict:
+    """
+    Function to decompose a loaded cifti
+
+    Parameters
+    ----------
+    img: object
+        loaded cifit object
+
+    Returns
+    -------
+    dict: dictionary
+        dict of volume and L/R
+        surfaces
+    """
+    data = img.get_fdata(dtype=np.float32)
+    brain_models = img.header.get_axis(1)  # Assume we know this
+    return {
+        "vol": volume_from_cifti(data, brain_models),
+        "L_surf": surf_data_from_cifti(
+            data, brain_models, "CIFTI_STRUCTURE_CORTEX_LEFT"
+        ),
+        "R_surf": surf_data_from_cifti(
+            data, brain_models, "CIFTI_STRUCTURE_CORTEX_RIGHT"
+        ),
+    }

@@ -57,7 +57,7 @@ def calculate_coverage(img_path: str, bin_mask: str) -> float:
     return (non_zero_voxels / total_brain_voxels) * 100
 
 
-def coverage_map(img_path: str, img_name: str, threshold: int):
+def coverage_map(img_path: str, img_name: str, threshold: int, no_threshold=False):
     """
     Function to create a binary coverage mask
     and a hitmap of voxels
@@ -110,7 +110,7 @@ def gifti_grey_coverage(hitmap_path: str) -> float:
     return data_gm[data_gm > 0].shape[0] / data_gm.shape[0] * 100
 
 
-def creat_gifti_hitmap(seed_path: str, filename: str) -> None:
+def create_gifti_hitmap(seed_path: str, filename: str) -> None:
     """
     Function to create hitmap from
     seed.
