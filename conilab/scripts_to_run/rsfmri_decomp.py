@@ -109,6 +109,7 @@ def cmd_args() -> dict:
         "-d",
         "--dim",
         dest="dim",
+        type=int,
         help="Number of dimensions for the ICA",
     )
     args.add_argument(
@@ -116,6 +117,7 @@ def cmd_args() -> dict:
         "--components",
         dest="components",
         default=2500,
+        type=int,
         help="Number of components for the PCA",
     )
     if len(sys.argv) == 1:
@@ -137,17 +139,17 @@ def main():
     None
     """
     args = cmd_args()
-    print("Loading sujects resting state")
+    print("Loading subjects resting state")
     func_img = glob.glob(os.path.join(args["folder"], "*.nii"))
     decomp_matrix = load_subject_rsfmi(func_img)
     cifti = nib.load(func_img[0])
     img_dict = decompose_cifti(cifti)
     print("Running PCA")
-    pca = pca_decomp(args["comp"], decomp_matrix)
+    pca = pca_decomp(args["components"], decomp_matrix.T)
     print("Running ICA")
     group_ICs = run_ica(pca["matrix"].T, args["dim"])
-    group_ICs_vertex_space = np.linalg.pinv(group_ICs.T) @ pca["components"]
-
+    group_ICs_vertex_space = np.linalg.pinv(group_ICs) @ pca["components"]
+    breakpoint()
     left_ica = group_ICs_vertex_space[:, : img_dict["L_surf"].shape[0]]
     right_ica = group_ICs_vertex_space[:, img_dict["L_surf"].shape[0] :]
 
