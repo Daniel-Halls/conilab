@@ -6,6 +6,7 @@ import numpy as np
 from scipy.stats import scoreatpercentile
 from conilab.data_functions.image_handling import decompose_cifti, save_gifti
 import argparse
+import sys
 
 
 def run_ica(matrix: np.ndarray, n_dim: int):
@@ -117,10 +118,24 @@ def cmd_args() -> dict:
         default=2500,
         help="Number of components for the PCA",
     )
+    if len(sys.argv) == 1:
+        args.print_help(sys.stderr)
+        sys.exit(1)
     return vars(args.parse_args())
 
 
-if __name__ == "__main__":
+def main():
+    """
+    main function of rsfmri_decomp
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
     args = cmd_args()
     print("Loading sujects resting state")
     func_img = glob.glob(os.path.join(args["folder"], "*.nii"))
@@ -128,7 +143,7 @@ if __name__ == "__main__":
     cifti = nib.load(func_img[0])
     img_dict = decompose_cifti(cifti)
     print("Running PCA")
-    pca = pca_decomp(args["comp"], pca_decomp)
+    pca = pca_decomp(args["comp"], decomp_matrix)
     print("Running ICA")
     group_ICs = run_ica(pca["matrix"].T, args["dim"])
     group_ICs_vertex_space = np.linalg.pinv(group_ICs.T) @ pca["components"]
@@ -146,3 +161,7 @@ if __name__ == "__main__":
     save_gifti(
         right_ica, os.path.join(args["outdir"], "rsfmri_ica_decomp_right.func.gii")
     )
+
+
+if __name__ == "__main__":
+    main()
