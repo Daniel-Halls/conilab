@@ -60,3 +60,25 @@ def organise_keys(dictionary: dict) -> dict:
         orgnaised dict
     """
     return {key: dictionary[key] for key in sorted(dictionary.keys())}
+
+
+def correlation_tracts(df: pd.DataFrame, threshold_value: float) -> pd.DataFrame:
+    """
+    Wrapper function around correlating table
+    but thresholds the table.
+
+    Parameters
+    ----------
+    df: pd.DataFrame
+        dataframe to correlate
+    threshold_value: float
+        float of threshold value
+
+    Returns
+    -------
+    df: pd.DataFrame
+        dataframe object of thresholded
+        correlation values
+    """
+    df = create_correlation_table(df, "tract", "r2")
+    return df[df["r2"] > threshold_value]

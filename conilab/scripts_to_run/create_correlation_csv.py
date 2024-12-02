@@ -8,6 +8,7 @@ import re
 import argparse
 import warnings
 import sys
+import numpy as np
 
 warnings.filterwarnings("ignore")
 
@@ -27,7 +28,7 @@ def args() -> dict:
     """
     option = argparse.ArgumentParser()
     option.add_argument(
-        "-C",
+        "-t",
         "--correlation_type",
         dest="correlation_type",
         help="""What type of correlation to run. 
@@ -68,11 +69,12 @@ def args() -> dict:
         type=str,
     )
     option.add_argument(
-        "-t",
+        "-T",
         "--threshold",
         dest="threshold",
+        action="store_true",
+        default=False,
         help="Whether to threshold the image components before running correlations and set threshold",
-        type=float,
     )
     option.add_argument(
         "--csv_name",
@@ -85,6 +87,26 @@ def args() -> dict:
         sys.exit(1)
 
     return vars(option.parse_args())
+
+
+def determine_threshold(nmf_img: object) -> float:
+    """
+    Function to determine the threshold
+    value to threshold image at. 99.85
+    chosen as most representative
+
+    Parameters
+    ----------
+    path_to_img: object
+        image object
+
+    Returns
+    -------
+    float: float
+        float value of threshold
+    """
+    img_data = nmf_img.get_fdata().ravel()
+    return np.percentile(img_data, 99.85)
 
 
 def correlation_type(corr_type: str) -> str:
@@ -103,7 +125,7 @@ def correlation_type(corr_type: str) -> str:
     """
     avail_type = ["whole", "mask"]
     if not corr_type:
-        print("no -C given. Doing whole brain correlation")
+        print("no -c given. Doing whole brain correlation")
         return avail_type[0]
     if corr_type.lower() in avail_type:
         print(f"Doing {corr_type.lower()} correlation")
@@ -112,7 +134,7 @@ def correlation_type(corr_type: str) -> str:
     print(
         f"{corr_type.lower()} not avaiable as correlation type. Doing whole brain correlation"
     )
-    return avail_type[0]
+    exit(0)
 
 
 def mask_correlation(tract_mask, comp_img, tract_img) -> dict:
@@ -184,7 +206,8 @@ def main():
             print(component, end="\r")
             comp = img.index_img(nfm, component)
             if options["threshold"]:
-                comp = img.threshold_img(comp, threshold=options["threshold"])
+                val = determine_threshold(nfm)
+                comp = img.threshold_img(comp, threshold=val)
             if corr_type == "whole":
                 resample_component = img.resample_to_img(
                     comp, template, interpolation="nearest"

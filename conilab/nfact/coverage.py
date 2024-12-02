@@ -57,7 +57,7 @@ def calculate_coverage(img_path: str, bin_mask: str) -> float:
     return (non_zero_voxels / total_brain_voxels) * 100
 
 
-def coverage_map(img_path: str, img_name: str, threshold: int, no_threshold=False):
+def coverage_map(img_path: str, img_name: str, threshold: int, normalize=True):
     """
     Function to create a binary coverage mask
     and a hitmap of voxels
@@ -78,7 +78,11 @@ def coverage_map(img_path: str, img_name: str, threshold: int, no_threshold=Fals
     """
     img_comp = nib.load(img_path)
     img_data = img_comp.get_fdata()
-    zscores = normalization(img_data)
+    if normalize:
+        zscores = normalization(img_data)
+    else:
+        zscores = img_data
+        threshold = 0
     binary_masks = np.abs(zscores) > threshold
     coverage_map = np.sum(binary_masks, axis=-1)
     save_nifti(coverage_map, img_comp.affine, img_name)

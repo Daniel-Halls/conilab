@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
+import seaborn as sns
 import numpy as np
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 
@@ -50,3 +51,30 @@ def plot_time_series(time_series: np.ndarray) -> None:
     plt.xlabel("Scan number")
     plt.ylabel("Signal")
     plt.show()
+
+
+def plot_xtract_corr(df: object, threshold_value: float) -> None:
+    """
+    Function to plot heat map one unthresholded
+    the other thresholded
+
+    Parameters
+    ----------
+    df: object
+        dataframe to plot
+    threshold_value: float
+        threshold value
+
+    Returns
+    -------
+    None
+    """
+    fig, ax = plt.subplots(1, 2, figsize=(16, 8))
+    sns.heatmap(df, ax=ax[0])
+    sns.heatmap(
+        df[df > threshold_value]
+        .dropna(axis=1, how="all")
+        .dropna(axis=0, how="all")
+        .fillna(0),
+        ax=ax[1],
+    )
