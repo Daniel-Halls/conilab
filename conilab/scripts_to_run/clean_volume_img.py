@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # A quick script to clean HCP volume images
 
 import glob

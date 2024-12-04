@@ -30,3 +30,4 @@ requires-python = ">=3.8"
 [project.scripts]
 create_correlations = "conilab.scripts_to_run.create_correlation_csv:main"
 rs_ica = "conilab.scripts_to_run.rsfmri_decomp:main"
+hitmaps = "conilab.scripts_to_run.hitmaps:main"

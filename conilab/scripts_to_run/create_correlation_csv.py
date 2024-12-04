@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import pandas as pd
 import nilearn.image as img
 from nilearn.datasets import load_mni152_template
