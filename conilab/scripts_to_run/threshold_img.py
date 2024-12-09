@@ -1,6 +1,6 @@
+from conilab.data_functions.image_handling import threshold_img
 import argparse
 import sys
-from conilab.nfact.coverage import coverage_map
 import os
 
 
@@ -39,15 +39,23 @@ def args() -> dict:
         "-t",
         "--threshold",
         dest="threshold",
-        default=2,
+        default=0,
         help="Threshold value",
         type=int,
     )
     option.add_argument(
-        "-D",
-        "--dont_normalise",
-        dest="dont_normalise",
-        help="Don't normalise and threshold image",
+        "-T",
+        "--two_sided",
+        dest="two_sided",
+        help="Threshold two sides",
+        action="store_false",
+    )
+
+    option.add_argument(
+        "-P",
+        "--remove_pos_onlys",
+        dest="remove_pos_onlys",
+        help="Remove only positive values",
         action="store_false",
     )
 
@@ -58,26 +66,28 @@ def args() -> dict:
     return vars(option.parse_args())
 
 
-def main():
+def main() -> None:
     """
     Main function
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
     """
     arg = args()
-    threshold_string = (
-        "Not thresholding"
-        if not arg["dont_normalise"]
-        else f"Thresholding at {arg['threshold']}"
+    print(f"Threshlding image at {arg['threshold']}")
+    threshold_img(
+        arg["image"],
+        os.path.join(arg["output_dir"], arg["image"]),
+        arg["threshold"],
+        arg["two_sided"],
+        arg["remove_pos_onlys"],
     )
-    print(f"Saving hitmaps to {arg['output_dir']}. {threshold_string}")
-    try:
-        coverage_map(
-            arg["image"],
-            os.path.join(arg["output_dir"], arg["name_of_image"]),
-            arg["threshold"],
-            arg["dont_normalise"],
-        )
-    except Exception as e:
-        print(f"Unable to save images due to {e}")
+    print(f"Print Saving {arg['image']} to: {arg['output_dir']}")
 
 
 if __name__ == "__main__":

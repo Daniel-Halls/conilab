@@ -1,4 +1,6 @@
 import pandas as pd
+import numpy as np
+import scipy.sparse as sps
 
 
 def reorganise_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -82,3 +84,28 @@ def correlation_tracts(df: pd.DataFrame, threshold_value: float) -> pd.DataFrame
     """
     df = create_correlation_table(df, "tract", "r2")
     return df[df["r2"] > threshold_value]
+
+
+def load_fdt_matrix(matfile: str) -> np.ndarray:
+    """
+    Function to load a single fdt matrix
+    as a ptx sparse matrix format.
+
+    Parameters
+    ----------
+    matfile: str
+       path to file
+
+    Returns
+    -------
+    sparse_matrix: np.array
+       sparse matrix in numpy array
+       form.
+    """
+    mat = np.loadtxt(matfile)
+    data = mat[:-1, -1]
+    rows = np.array(mat[:-1, 0] - 1, dtype=int)
+    cols = np.array(mat[:-1, 1] - 1, dtype=int)
+    nrows = int(mat[-1, 0])
+    ncols = int(mat[-1, 1])
+    return sps.csc_matrix((data, (rows, cols)), shape=(nrows, ncols)).toarray()
