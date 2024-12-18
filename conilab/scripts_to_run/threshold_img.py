@@ -48,7 +48,8 @@ def args() -> dict:
         "--two_sided",
         dest="two_sided",
         help="Threshold two sides",
-        action="store_false",
+        default=False,
+        action="store_true",
     )
 
     option.add_argument(
@@ -56,7 +57,8 @@ def args() -> dict:
         "--remove_pos_onlys",
         dest="remove_pos_onlys",
         help="Remove only positive values",
-        action="store_false",
+        default=False,
+        action="store_true",
     )
 
     if len(sys.argv) == 1:
@@ -64,6 +66,29 @@ def args() -> dict:
         sys.exit(1)
 
     return vars(option.parse_args())
+
+
+def check_output_dir(arg: dict) -> None:
+    """
+    Function to check that output dir
+    does not contain the same image.
+
+    Parameters
+    ----------
+    arg: dict
+        cmd options
+
+    Returns
+    -------
+    None
+    """
+    output_dir = os.listdir(arg["output_dir"])
+    if arg["name_of_image"] in output_dir:
+        print(
+            f"Output image {arg['name_of_image']} already exists in {arg['output_dir']}."
+        )
+        print("Exiting...")
+        exit(1)
 
 
 def main() -> None:
@@ -79,15 +104,16 @@ def main() -> None:
     None
     """
     arg = args()
+    check_output_dir(arg)
     print(f"Threshlding image at {arg['threshold']}")
     threshold_img(
         arg["image"],
-        os.path.join(arg["output_dir"], arg["image"]),
+        os.path.join(arg["output_dir"], arg["name_of_image"]),
         arg["threshold"],
         arg["two_sided"],
         arg["remove_pos_onlys"],
     )
-    print(f"Print Saving {arg['image']} to: {arg['output_dir']}")
+    print(f"Saving {arg['image']} to: {arg['output_dir']}")
 
 
 if __name__ == "__main__":
