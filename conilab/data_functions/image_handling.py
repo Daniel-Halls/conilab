@@ -66,10 +66,14 @@ def normalization(img_data: np.array) -> np.array:
         array of zscores reshaped
         to be saved as a imge
     """
+
     n_voxels = np.prod(img_data.shape[:-1])
     n_vol = img_data.shape[-1]
     reshaped_data = img_data.reshape(n_voxels, n_vol)
-    z_scores = StandardScaler().fit_transform(reshaped_data)
+    non_zero_mask = ~(reshaped_data == 0).all(axis=1)
+    z_scores = np.zeros_like(reshaped_data)
+    scaler = StandardScaler()
+    z_scores[non_zero_mask] = scaler.fit_transform(reshaped_data[non_zero_mask])
     return z_scores.reshape(img_data.shape)
 
 

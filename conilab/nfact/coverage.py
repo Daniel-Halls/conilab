@@ -78,8 +78,10 @@ def coverage_map(img_path: str, img_name: str, threshold: int, normalize=True):
     """
     img_comp = nib.load(img_path)
     img_data = img_comp.get_fdata()
+
     if normalize:
         zscores = normalization(img_data)
+
     else:
         zscores = img_data
         threshold = 0
