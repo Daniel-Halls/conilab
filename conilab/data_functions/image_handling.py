@@ -314,7 +314,6 @@ def volume_from_cifti(data: np.ndarray, axis: object) -> object:
     """
     assert isinstance(axis, nib.cifti2.BrainModelAxis)
     data = data.T[axis.volume_mask]
-    volmask = axis.volume_mask
     vox_indices = tuple(axis.voxel[axis.volume_mask].T)
     vol_data = np.zeros(axis.volume_shape + data.shape[1:], dtype=data.dtype)
     vol_data[vox_indices] = data
