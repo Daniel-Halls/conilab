@@ -53,7 +53,9 @@ def plot_time_series(time_series: np.ndarray) -> None:
     plt.show()
 
 
-def plot_xtract_corr(df: object, threshold_value: float) -> None:
+def plot_xtract_corr(
+    df: object, threshold_value: float, size_x: int = 16, size_y: int = 8
+) -> None:
     """
     Function to plot heat map one unthresholded
     the other thresholded
@@ -69,7 +71,7 @@ def plot_xtract_corr(df: object, threshold_value: float) -> None:
     -------
     None
     """
-    fig, ax = plt.subplots(1, 2, figsize=(16, 8))
+    _, ax = plt.subplots(1, 2, figsize=(size_x, size_y))
     sns.heatmap(df, ax=ax[0])
     sns.heatmap(
         df[df > threshold_value]
