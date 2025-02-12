@@ -45,7 +45,7 @@ def plot_time_series(time_series: np.ndarray) -> None:
     plot_acf(time_series, lags=40, ax=ax1)
     ax2 = fig.add_subplot(gs[0, 1])
     plot_pacf(time_series, lags=40, ax=ax2)
-    ax3 = fig.add_subplot(gs[1, :])
+    _ = fig.add_subplot(gs[1, :])
     plt.plot(time_series)
     plt.title("Time series")
     plt.xlabel("Scan number")
