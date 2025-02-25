@@ -3,6 +3,202 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.impute import KNNImputer
 import numpy as np
+from functools import reduce
+import warnings
+
+warnings.filterwarnings("ignore")
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+
+
+def clustering(n_clusters: int, data: pd.DataFrame) -> object:
+    """
+    Function to return a fitted k means
+    cluster model.
+
+    Parameters
+    ----------
+    n_clusters: int
+        number of clusters
+    data: pd.DataFrame
+        data to perform clustering on
+
+    Returns
+    -------
+    kmeans: KMeans object
+        fitted kmeans object
+    """
+    kmeans = KMeans(init="k-means++", n_clusters=n_clusters, n_init=4)
+    kmeans.fit(data)
+    return kmeans
+
+
+def fit_pca(no_comp: int, normalised_data: pd.DataFrame) -> np.ndarray:
+    """
+    Function to perform PCA
+
+    Parameters
+    ----------
+    no_comp: int
+       no of components
+    normalised_data: pd.DataFrame
+        normalised dataframe
+
+    Returns
+    -------
+    np.ndarray: array
+        array of PCA values
+    """
+
+    return PCA(n_components=no_comp).fit_transform(normalised_data)
+
+
+def determine_number_of_clusters(
+    pca_data: np.ndarray, cluster_algo: object, cluster_range: tuple = range(2, 11)
+) -> None:
+    """
+    Function to calculate
+    the silhouette score
+    for clusters to determine the
+    number of clusters that should be used
+
+    Parameters
+    ----------
+    pca_data: np.ndarray
+        data to perform clustering on
+    cluster_algo: object
+        Which cluster algo to use
+    cluster_range: tuple
+        Default is range(2, 11)
+    """
+    for cluster_n in cluster_range:
+        clusterer = cluster_algo(n_clusters=cluster_n, random_state=10)
+        cluster_labels = clusterer.fit_predict(pca_data)
+        silhouette_avg = silhouette_score(pca_data, cluster_labels)
+        print(
+            "For n_clusters =",
+            cluster_n,
+            "The average silhouette_score is :",
+            silhouette_avg,
+        )
+
+
+def pca_permulation(
+    pca_df: pd.DataFrame, normalised_data: pd.DataFrame, n_perms: int = 10000
+) -> int:
+    """
+    Function to perform a PCA permuation
+    approach
+
+    Parameters
+    ----------
+    pca_df: pd.DataFrame
+        dataframe to perform PCA on
+    normalised_data: pd.DataFrame
+        dataframe of normalised data
+    n_perms: int=10000
+        number of permuations
+
+    Returns
+    -------
+    int: integer
+        the number of signficiant
+        PCA components
+    """
+
+    decomp = PCA()
+    decomp.fit_transform(normalised_data)
+    null_distro = permutation_null_distro(pca_df, n_perms=n_perms)
+    crti_val = get_crit_val(len(decomp.explained_variance_ratio_), null_distro)
+    alt_val = get_explained_ratio(decomp, len(decomp.explained_variance_ratio_))
+    return len(get_significant_components(crti_val, alt_val))
+
+
+def impute_group_median(group: pd.DataFrame):
+    """
+    Function to impute the median value
+    by group.
+
+    Parameters
+    --------
+    group: pd.DataFrame
+        dataframe of group values
+
+    Returns
+    -------
+    group: pd.DataFrame
+        dataframe with median imputed values
+    """
+    for col in group.select_dtypes(include=["object", "number"]).columns:
+        if col not in ["id", "phenotype"]:
+            group[col] = pd.to_numeric(group[col], errors="coerce")
+            group[col] = group[col].fillna(group[col].median())
+    return group
+
+
+def merge_dataframes(df_list: list):
+    """
+    Function to merge a list
+    of dataframes into a
+    single large dataframe.
+
+    Parameters
+    ----------
+    df_list: list
+        list of dataframes
+
+    Returns
+    -------
+    pd.DataFrame: dataframe
+        merged dataframe
+    """
+    return reduce(
+        lambda left, right: pd.merge(left, right, on="id", how="outer"), df_list
+    )
+
+
+def convert_df_type(df: pd.DataFrame):
+    """
+    Function to convert dataframe type
+    into float.
+
+    Parameters
+    ----------
+    df: pd.Dataframe
+        dataframe to convert
+
+    Returns
+    -------
+    df: pd.Dataframe
+        converted dataframe
+    """
+    for col in df.columns:
+        try:
+            assert df[col].dtypes != "object"
+        except AssertionError:
+            try:
+                df[col] = df[col].astype("float")
+            except ValueError:
+                continue
+    return df
+
+
+def scaled_data(df) -> np.ndarray:
+    """
+    Function wrapper around scklearn
+    StandardScaler.
+
+    Parameters
+    ----------
+    df: pd.DataFrame
+        dataframe to scale
+
+    Returns
+    -------
+    np.ndarray: np.array
+        array of scaled values
+    """
+    return StandardScaler().fit_transform(df.values)
 
 
 def scaling(df: pd.DataFrame) -> pd.DataFrame:
@@ -21,19 +217,18 @@ def scaling(df: pd.DataFrame) -> pd.DataFrame:
         DataFrame of scaled values
     """
 
-    removed_data = []
+    cols = []
     for col in df.columns:
-        if df[col].dtype != "float":
-            removed_data.append(col)
-            scaled_df = df.drop(col, axis=1)
+        if df[col].dtype == "float":
+            cols.append(col)
 
-    scaled_data = StandardScaler().fit_transform(scaled_df)
-    scaled_data = pd.DataFrame(
-        scaled_data,
-        columns=[col for col in df.columns.to_list() if col not in removed_data],
+    scaled_df_data = scaled_data(df[cols])
+    scaled_df_data = pd.DataFrame(
+        scaled_df_data,
+        columns=cols,
     )
-    scaled_data["sex"] = df["sex"].reset_index(drop=True)
-    return scaled_data
+    scaled_df_data["sex"] = df["sex"].reset_index(drop=True)
+    return scaled_df_data
 
 
 def PCA_analysis(data: np.array) -> object:
@@ -150,95 +345,6 @@ def get_significant_components(crti_val: dict, alt_val: dict) -> list:
     return components
 
 
-def create_dataframe(data: pd.DataFrame, key: pd.DataFrame, *args: str):
-    """
-    Function to create dataframe of HCP data given
-    data and key
-
-    Parameters
-    ----------
-    data: pd.DataFrame
-        dataframe with 'src_subject_id', 'interview_date',
-        'interview_age',
-    key: pd.DataFrame
-         Dataframe with 'src_subject_id',
-         'interview_age', 'sex', 'phenotype'
-    args: str
-        str of column(s) to include in the final
-        dataframe
-    """
-    merged = (
-        pd.merge(
-            data[["src_subject_id", "interview_date", "interview_age"] + list(args)],
-            key,
-            on="src_subject_id",
-            how="right",
-        )
-        .sort_values(by="src_subject_id")
-        .reset_index(drop=True)
-    )
-    null_values = (
-        merged[merged["interview_date"].isna()]
-        .drop("interview_age_x", axis=1)
-        .rename(columns={"interview_age_y": "interview_age"})
-    )
-    beh_data = merged[
-        merged["interview_age_x"].astype("float")
-        == merged["interview_age_y"].astype("float")
-    ].reset_index(drop=True)
-    duplicated = beh_data[beh_data["src_subject_id"].duplicated()]
-    beh_data = (
-        beh_data.drop(duplicated.index)
-        .drop("interview_age_x", axis=1)
-        .rename(columns={"interview_age_y": "interview_age"})
-    )
-    return (
-        pd.concat([beh_data, null_values], axis=0)
-        .sort_values(by="phenotype")
-        .drop("interview_date", axis=1)
-        .reset_index(drop=True)
-    )
-
-
-def check_data(data: pd.Series, key: pd.Series) -> list:
-    """
-    Function to see if any elements
-    are missing between data and key
-
-    Parameters
-    ----------
-    data: pd.Series
-        A Series
-    key: pd.Series
-
-    Returns
-    -------
-    list: list object
-        list of missing subjects
-        between key and data
-
-    """
-    return [
-        el
-        for el in key["src_subject_id"].to_list()
-        if el not in data["src_subject_id"].to_list()
-    ]
-
-
-def get_missing_data_from_key(data: pd.DataFrame, key: pd.DataFrame) -> pd.DataFrame:
-    """
-    TODO: make more dynamic so its not only the first one
-    """
-    missing = check_data(data, key)
-    if not missing:
-        raise ValueError("No missing values")
-    return (
-        pd.concat([data, key[key["src_subject_id"] == missing[0]]], axis=0)
-        .sort_values(by="phenotype")
-        .reset_index(drop=True)
-    )
-
-
 def imputer(df: pd.DataFrame) -> pd.DataFrame:
     """
     Function to impute dataframe by
@@ -270,3 +376,23 @@ def imputer(df: pd.DataFrame) -> pd.DataFrame:
         data.columns = group_df.columns
         imputed_data[group] = data
     return pd.concat(imputed_data.values())
+
+
+def nn(score) -> np.array:
+    """
+    Function wrapper around the
+    KNNImputer function in
+    sckit learn.
+
+    Parameters
+    ----------
+    score: np.array
+        array of values
+
+    Returns
+    -------
+    np.array: array
+        array of imputed
+        scores
+    """
+    return KNNImputer(missing_values=np.nan, weights="uniform").fit_transform(score)
