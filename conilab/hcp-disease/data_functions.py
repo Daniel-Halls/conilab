@@ -5,10 +5,10 @@ from sklearn.impute import KNNImputer
 import numpy as np
 from functools import reduce
 import warnings
-
-warnings.filterwarnings("ignore")
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
+
+warnings.filterwarnings("ignore")
 
 
 def clustering(n_clusters: int, data: pd.DataFrame) -> object:
