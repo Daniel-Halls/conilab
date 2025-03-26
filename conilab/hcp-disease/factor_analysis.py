@@ -7,6 +7,53 @@ from scipy.stats import f_oneway
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 
 
+def obtain_correlation_values(df, corr_val) -> pd.Series:
+    """
+    Function to obtain all values
+    greater than or equal to
+    a given correlation.
+
+    Parameters
+    ----------
+    df: pd.DataFrame
+        Dataframe of values
+    corr_val: float
+        correlation value to use as
+        threshold
+
+    Returns
+    -------
+    filtered_corr: pd.Series
+       Series of correlation
+       values greater than
+       or equal to threshold
+    """
+    filtered_corr = (
+        df.corr().apply(lambda x: x.where((x >= corr_val) & (x < 1))).stack()
+    )
+    return filtered_corr[
+        filtered_corr.index.get_level_values(0)
+        < filtered_corr.index.get_level_values(1)
+    ]
+
+
+def matrix_determinate(df: pd.DataFrame) -> int:
+    """
+    Function to check determinate of matrix
+
+    Parameters
+    ----------
+    df: pd.DataFrame
+        Dataframe of values
+
+    Returns
+    -------
+    int: integer
+        int of determinate
+    """
+    return np.linalg.det(np.corrcoef(df, rowvar=False))
+
+
 def check_variables(df: pd.DataFrame, factor_names: list) -> None:
     """
     Function to do a basic ANOVA with post hoc testing
@@ -124,6 +171,7 @@ def data_fit(df) -> dict:
         kmo_all & kmo_model and
         bartlett_pval & bartlett_chi2
     """
+
     chi2, pval = calculate_bartlett_sphericity(df.values)
     kmo_model = kmo_scoring(df.values, df.columns)
     return {
@@ -191,7 +239,7 @@ def model_fit_parameters(model: object, data: np.ndarray, cols: list) -> dict:
     mse
     """
     true_cov = np.cov(data.T)
-    predicted_cov = model.cov_
+    predicted_cov = model.get_model_implied_cov()
     return {
         "loadings": pd.DataFrame(model.loadings_.T, columns=cols),
         "rmse": root_mean_squared_error(true_cov, predicted_cov),
