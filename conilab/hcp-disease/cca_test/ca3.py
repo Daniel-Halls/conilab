@@ -1,59 +1,151 @@
+import numpy as np
+from scipy.optimize import minimize
+
+
 class CA3:
+    """
+    CA3 class.
+    A class to do CA3
+
+    Usage
+    -----
+    ca3 = CA3(l2=0.5, theta=1)
+    ca3.fit(study1, study2)
+    transformed = ca3.transform(study1, study2)
+    """
+
     def __init__(
         self,
-        l2: float = None,
-        theta: float = None,
-        random_seed: int = 42,
+        l2: float = 1,
+        theta: float = 0,
         tol=1e-6,
         maxiter=500,
+        normalise_weights=True,
     ):
-        self.l2_ = np.logspace(-6, -2, num=5) if l2 is None else l2
-        self.theta_ = np.arange(0.0, 1, 0.1) if theta is None else theta
+        self.l2_ = l2
+        self.theta_ = theta
         self.intial_weights_ = None
         self.dims_ = []
         self.best_loss = float("inf")
-        self.optimal_theta_r = None
-        self.optimal_l2 = None
         self.weights_ = None
         self.covariances_ = {}
         self.tol_ = tol
         self.maxiter_ = maxiter
-        self.rng = np.random.RandomState(random_seed)
+        self.normalise_weights = normalise_weights
+        self.canonical_correlations_ = None
 
-    def fit(self, *data_sets):
+    def fit(self, *data_sets: tuple) -> None:
+        """
+        Method to fit the CA3 model to a given
+        set of datasets
+
+        Parameters
+        ----------
+        data_sets: tuple
+            a tuple of X, Y data
+            from an arbituray number of
+            datasets
+
+        Returns
+        -------
+        None
+        """
         self._calculate_covariance_matricies(*data_sets)
         self._get_dimensions(*data_sets)
-        self._weight_intialization(*list(itertools.chain(*self.dims_)))
+        self._weight_intialization()
         self._optimise()
 
-    def transform(self, *data_sets):
+    def transform(self, *data_sets: tuple) -> list[np.ndarray]:
+        """
+        Methods to transform data sets into canonical
+        projects.
+
+        Parameters
+        ----------
+        data_sets: tuple
+            a tuple of X, Y data
+            from an arbituray number of
+            datasets
+
+        Returns
+        --------
+        projects: list[np.ndarray]
+            conatins a list of the
+            projections of each dataset in
+            ndarry of n_components by n_samples
+        """
         assert (
             self.weights_ is not None
-        ), "Model must be fitted before transfomed can be called."
+        ), "Model must be fitted before transform can be called."
         assert len(data_sets) == len(
             self.dims_
         ), "Model fitted with different number of datasets."
 
-        scores = {}
-        correlations = {}
-        count = 0
-        for (img_data, beh_data), (wx, wb) in zip(data_sets, self.weights_):
-            imging_projections = img_data @ wx
-            beh_projections = beh_data @ wb
-            scores[f"study{count}"] = [imging_projections, beh_projections]
-            corr = np.array([np.corrcoef(imging_projections, beh_projections)[0, 1]])
-            correlations[f"study{count}"] = corr
-            count += 1
+        projects = [
+            np.stack(
+                [
+                    self._normalise(img_data @ wx)
+                    if self.normalise_weights
+                    else img_data @ wx,
+                    self._normalise(beh_data @ wb)
+                    if self.normalise_weights
+                    else beh_data @ wb,
+                ],
+                axis=0,
+            )
+            for (img_data, beh_data), (wx, wb) in zip(data_sets, self.weights_)
+        ]
 
-        return {"correlations": correlations, "projections": scores}
+        self.canonical_correlations_ = [
+            np.corrcoef(data_sets[0], data_sets[1])[0, 1] for data_sets in projects
+        ]
+        return projects
 
-    def fit_transform(self, *data_sets):
+    def fit_transform(self, *data_sets) -> list[np.ndarray]:
+        """
+        Methods to fit a CA3 model and then transform
+        the data.
+
+        Parameters
+        ----------
+        data_sets: tuple
+            a tuple of X, Y data
+            from an arbituray number of
+            datasets
+
+        Returns
+        --------
+        projects: list[np.ndarray]
+            conatins a list of the
+            projections of each dataset in
+            ndarry of n_components by n_samples.
+        """
         self.fit(*data_sets)
         return self.transform(*data_sets)
 
-    def _weight_intialization(self, *dims) -> np.ndarray:
+    def calculate_canonical_correlations(self) -> list[float]:
         """
-        Define a set of random starting
+        Method to obtain the canonical correlations.
+        Model must have been fitted and transfomed
+        before.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        canonical_correlations: list[float]
+            list of canonical correlations
+        """
+        assert (
+            self.canonical_correlations_ is not None
+        ), "Model must be fitted and transfomed before correlations can be returned"
+        return self.canonical_correlations_
+
+    def _weight_intialization(self) -> np.ndarray:
+        """
+        Method to define a set of random starting
         weights
 
         Parameters
@@ -69,25 +161,21 @@ class CA3:
         """
         init_weights = []
 
-        for idx, (behav_dim, img_dim) in enumerate(self.dims_):
+        for idx, _ in enumerate(self.dims_):
             s_xb = self.covariances_[f"s_img{idx+1}_behav{idx+1}"]
-
             # Perform SVD on the cross-covariance matrix
             try:
-                U, S, Vt = np.linalg.svd(s_xb, full_matrices=False)
+                U, _, Vt = np.linalg.svd(s_xb, full_matrices=False)
             except np.linalg.LinAlgError as e:
                 raise RuntimeError(f"SVD failed for dataset {idx+1}: {e}")
 
-            # First left/right singular vectors as initial directions
             wx = U[:, 0]
             wb = Vt.T[:, 0]
-
-            # Normalize to unit norm under their autocovariance
             s_xx = self.covariances_[f"s_img{idx+1}_img{idx+1}"]
             s_bb = self.covariances_[f"s_behav{idx+1}_behav{idx+1}"]
 
-            wx = wx / np.sqrt(wx.T @ s_xx @ wx + 1e-8)
-            wb = wb / np.sqrt(wb.T @ s_bb @ wb + 1e-8)
+            wx = wx / np.sqrt(wx.T @ s_xx @ wx)
+            wb = wb / np.sqrt(wb.T @ s_bb @ wb)
 
             init_weights.extend(wx)
             init_weights.extend(wb)
@@ -96,7 +184,7 @@ class CA3:
 
     def _calculate_covariance_matricies(self, *data_sets) -> dict:
         """
-        Calculates covariance matrices and auto covariance
+        Calculates covariance and auto covariance
         matricies
 
         Parameters
@@ -114,10 +202,9 @@ class CA3:
         """
         for idx, study_pair in enumerate(data_sets):
             img_data, behav_data = study_pair
-            if not self._data_able_to_process(study_pair, behav_data, img_data):
-                continue
-            behav_data = self._mean_center(behav_data)
-            img_data = self._mean_center(img_data)
+            self._data_able_to_process(study_pair)
+            behav_data = self._normalise(behav_data)
+            img_data = self._normalise(img_data)
             study_num = idx + 1
             try:
                 self.covariances_[f"s_behav{study_num}_behav{study_num}"] = (
@@ -133,11 +220,9 @@ class CA3:
             except Exception as e:
                 print(f"Error calculating covariances for Study {study_num}: {e}")
 
-    def _data_able_to_process(
-        self, study_pair: tuple, behav_data: np.ndarray, img_data: np.ndarray
-    ) -> bool:
+    def _data_able_to_process(self, study_pair: tuple) -> bool:
         """
-        Function to check that data
+        Method to check that data
         is in correct format to be processed
 
         Parameters
@@ -145,94 +230,105 @@ class CA3:
          study_pair: tuple,
              tuple of behavioural data
              and imging data
-         behav_data: np.ndarray
-             array of behav_data
-         img_data: np.ndarray
-             array of img_data
+
 
         Returns
         -------
         bool: boolean
             bool of if failed or not
         """
-        if not isinstance(study_pair, (tuple, list)) or len(study_pair) != 2:
-            print("Given argument isn't a pair of datasets")
-            return False
-        if not isinstance(behav_data, np.ndarray) or not isinstance(
-            img_data, np.ndarray
-        ):
-            print("Data provided isn't a numpy array")
-            return False
-        if (
-            behav_data.shape[0] == 0
-            or img_data.shape[0] == 0
-            or behav_data.shape[0] != img_data.shape[0]
-        ):
-            print(f"Mismatch between ({behav_data.shape[0]} and {img_data.shape[0]})")
-
-        return True
+        assert (
+            isinstance(study_pair, (tuple, list)) and len(study_pair) == 2
+        ), "Given argument isn't a pair of datasets"
+        assert isinstance(study_pair[0], np.ndarray) or not isinstance(
+            study_pair[1], np.ndarray
+        ), "Data provided ins't numpy array"
+        assert (study_pair[0].shape[0] != 0) and (
+            study_pair[1].shape[0] != 0
+        ), "Study pairs contains not data"
+        assert (
+            study_pair[0].shape[0] == study_pair[1].shape[0]
+        ), f"Mismatch between ({study_pair[0].shape[0]} and {study_pair[1].shape[0]})"
 
     def _optimise(self):
-        if isinstance(self.theta_, (list, np.ndarray)):
-            for theta in self.theta_:
-                model = self._optimising_model(theta)
-                if model.status != 0:
-                    continue
-                if model.fun < self.best_loss:
-                    self.best_loss = model.fun
-                    self.optimal_theta_r = theta
-                    self.weights_ = self._split_weights(model.x)
-        else:
-            model = self._optimising_model(self.theta_)
-            self.best_loss = model.fun
-            self.optimal_theta_r = self.theta_
-            self.weights_ = self._split_weights(model.x)
+        """
+        Method to minimise the
+        objective function
 
-        if isinstance(self.l2_, (list, np.ndarray)):
-            for l2 in self.l2_:
-                model = self._optimising_model(self.optimal_theta_r, l2)
-                if model.status != 0:
-                    print("model failed")
-                    continue
-                if model.fun < self.best_loss:
-                    print("l2 succeeded")
-                    self.best_loss = model.fun
-                    self.optimal_l2 = l2
-                    self.weights_ = self._split_weights(model.x)
-        else:
-            model = self._optimising_model(self.optimal_theta_r, self.l2_)
-            self.best_loss = model.fun
-            self.optimal_l2 = self.l2_
-            self.weights_ = self._split_weights(model.x)
+        Parameters
+        ----------
+        None
 
-    def _optimising_model(self, theta, l2=1):
-        return minimize(
+        Returns
+        --------
+        None
+        """
+        model = minimize(
             self._objective_function,
             self.intial_weights_,
             options={"gtol": self.tol_, "maxiter": self.maxiter_},
-            args=(self.covariances_, theta, l2),
-            method="L-BFGS-B",
+            args=(self.covariances_, self.theta_, self.l2_),
         )
+        self.best_loss = model.fun
+        self.weights_ = self._split_weights(model.x)
 
-    def _get_dimensions(self, *data_sets):
+    def _get_dimensions(self, *data_sets) -> None:
+        """
+        Method to check the number of dimensions
+        that the
+        """
         self.dims_ = [(behav.shape[1], img.shape[1]) for behav, img in data_sets]
 
-    def _split_weights(self, w):
+    def _split_weights(self, weights: np.ndarray) -> list[np.ndarray]:
         """
-        Splits the flat weight vector w into individual vectors
-        for each behavioural and imaging dataset.
+        Splits the flat weight vector weights into individual vectors
+        for each x and b dataset.
+
+        Parameters
+        ----------
+        weights: np.ndarray
+            flatten numpy array
+
+        Returns
+        -------
+        split_weights: list[np.ndarray]
+            list of weights split
+            wx and wb
+
         """
         offset = 0
-        weights = []
+        split_weights = []
         for img_dim, behav_dim in self.dims_:
-            wx = w[offset : offset + img_dim]
+            wx = weights[offset : offset + img_dim]
             offset += img_dim
-            wb = w[offset : offset + behav_dim]
+            wb = weights[offset : offset + behav_dim]
             offset += behav_dim
-            weights.append((wx, wb))
-        return weights
+            split_weights.append((wx, wb))
+        return split_weights
 
-    def _objective_function(self, weights, covariances, theta, l2):
+    def _objective_function(
+        self, weights: np.ndarray, covariances: dict, theta: float, l2: float
+    ) -> float:
+        """
+        Objective function of the CA3 class
+
+        Parameters
+        ----------
+        weights: np.ndarray
+            weights
+        covariances: dict
+            dict of cross/auto covariance
+            matricies
+        theta: float
+            theta penality
+        l2: float
+            regularization penailty
+
+        Returns
+        -------
+        total_loss: float
+           total loss of the objective function
+        """
         total_loss = 0
         weights_ = self._split_weights(weights)
         for idx, (wx, wb) in enumerate(weights_):
@@ -257,7 +353,7 @@ class CA3:
         self, matrix_1: np.ndarray, matrix_2: np.ndarray
     ) -> np.ndarray:
         """
-        Function to calculate
+        Function to calculate cross-auto
         covariance matrix
 
         Parameters
@@ -274,13 +370,13 @@ class CA3:
         Returns
         -------
         np.ndarray: array
-            array of cross covariance matrix
+            array of covariance matrix
         """
         return (matrix_1.T @ matrix_2) / matrix_1.shape[0]
 
-    def _mean_center(self, data: np.ndarray) -> np.ndarray:
+    def _normalise(self, data: np.ndarray) -> np.ndarray:
         """
-        Function to demean data.
+        Function to normalise data.
 
         Parmeteres
         ----------
@@ -292,13 +388,164 @@ class CA3:
         np.ndarray: array
             demeaned data
         """
-        return data - data.mean(axis=0)
+        dmean = data - data.mean(axis=0)
+        std = data.std(axis=0, ddof=1)
+        std = np.where(std == 0.0, 1.0, std)
+        return dmean / std
 
-    def _cross_cov_term(self, weight_beh, cov_mat, weight_img):
+    def _cross_cov_term(
+        self, weight_beh: np.ndarray, cov_mat: np.ndarray, weight_img: np.ndarray
+    ) -> np.ndarray:
+        """
+        Method to calculate the cross covarance term
+        in the objective function
+
+        Parameters
+        ----------
+        weight_beh: np.ndarray
+            set of weights for wb
+        cov_mat: np.ndarray
+             covariance matrix for
+             wx wb
+        weight_img: np.ndarray
+            set of weights for wx
+
+        Returns
+        -------
+        np.ndarray: np.array
+            cross covariance term
+        """
         return -weight_img.T @ (cov_mat @ weight_beh)
 
-    def _regularization_term(self, weight, cov_mat, lambda_i):
+    def _regularization_term(
+        self, weight: np.ndarray, cov_mat: np.ndarray, lambda_i: float
+    ) -> float:
+        """
+        Method to calculate the regularization term
+        in the objective function
+
+        Parameters
+        ----------
+        weight: np.ndarray
+            set of weights
+        cov_mat: np.ndarray
+            auto covariance matrix
+        lambda_i: float
+            regularization parameter
+
+        Returns
+        -------
+        float: float
+            regularization term of the objective function
+
+        """
         return 0.5 * lambda_i * (weight.T @ (cov_mat @ weight) - 1)
 
-    def _dissimilarity_penality(self, theta_r, img_weight1, img_weight2):
+    def _dissimilarity_penality(
+        self, theta_r: float, img_weight1: np.ndarray, img_weight2: np.ndarray
+    ) -> float:
+        """
+        Method to return dissimilarity penality
+
+        Parameters
+        -----------
+        theta_r: float
+           theta penality.
+        img_weight1: np.ndarray
+            weights of imaging data
+        img_weight2: np.ndarray
+            weights of second imaging
+            data
+
+        Returns
+        -------
+        float: float
+            dissimilarity penality
+        """
         return theta_r * 0.5 * np.sum((img_weight1 - img_weight2) ** 2)
+
+    def _score(self, *data_sets: tuple) -> float:
+        """
+        Method used to evaluate model performance.
+
+        Parameters
+        -----------
+        data_sets: tuple
+            a tuple of X, Y data
+            from an arbituray number of
+            datasets
+
+        Returns
+        -------
+        float: float
+            mean of correlation
+            values across datasets
+
+        """
+        if self.weights_ is None:
+            raise ValueError("Model must be fitted before scoring.")
+
+        result = self.transform(*data_sets)
+        correlations = self.calculate_canonical_correlations()
+        all_corrs = [corr[0] for corr in correlations.values()]
+        return np.mean(all_corrs)
+
+
+class GridSearchCA3:
+    def __init__(self, l2_values, theta=0, tol=1e-6, maxiter=500, verbose=False):
+        """
+        Custom grid search to find the best l2 value for the CA3 model.
+
+        Parameters
+        ----------
+        l2_values : list of float
+            The l2 regularization parameters to search over.
+        theta : float
+            The dissimilarity regularization parameter (shared across all models).
+        tol : float
+            Tolerance for optimization.
+        maxiter : int
+            Maximum number of optimization iterations.
+        verbose : bool
+            If True, print progress during search.
+        """
+        self.l2_values = l2_values
+        self.theta = theta
+        self.tol = tol
+        self.maxiter = maxiter
+        self.verbose = verbose
+        self.best_model_ = None
+        self.best_score_ = -np.inf
+        self.best_l2_ = None
+        self.all_results_ = []
+
+    def fit(self, *data_sets):
+        """
+        Fit CA3 models with each l2 value and track the one with best score.
+        """
+        for l2 in self.l2_values:
+            model = CA3(l2=l2, theta=self.theta, tol=self.tol, maxiter=self.maxiter)
+            model.fit(*data_sets)
+            score = model._score(*data_sets)
+
+            self.all_results_.append((l2, score))
+
+            if self.verbose:
+                print(f"l2: {l2:.4f}, score: {score:.4f}")
+
+            if score > self.best_score_:
+                self.best_score_ = score
+                self.best_model_ = model
+                self.best_l2_ = l2
+
+        if self.verbose:
+            print(f"Best l2: {self.best_l2_:.4f}, Best score: {self.best_score_:.4f}")
+
+    def get_best_model(self):
+        return self.best_model_
+
+    def get_best_l2(self):
+        return self.best_l2_
+
+    def get_all_results(self):
+        return self.all_results_
