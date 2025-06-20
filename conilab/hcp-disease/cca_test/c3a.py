@@ -317,7 +317,7 @@ class C3A:
         -------
         None
         """
-        self.dims_ = [(Y.shape[1], X.shape[1]) for X, Y in data_sets]
+        self.dims_ = [(X.shape[1], Y.shape[1]) for X, Y in data_sets]
 
     def _split_weights(self, weights: np.ndarray) -> list[np.ndarray]:
         """
