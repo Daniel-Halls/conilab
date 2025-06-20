@@ -1,17 +1,18 @@
 import numpy as np
 from scipy.optimize import minimize
+from itertools import combinations
 
 
-class CA3:
+class C3A:
     """
-    CA3 class.
-    A class to do CA3
+    C3A class.
+    A class to do C3A
 
     Usage
     -----
-    ca3 = CA3(l2=0.5, theta=1)
-    ca3.fit(study1, study2)
-    transformed = ca3.transform(study1, study2)
+    c3a = C3A(l2=0.5, theta=1)
+    c3a.fit(study1, study2)
+    transformed = c3a.transform(study1, study2)
     """
 
     def __init__(
@@ -33,6 +34,7 @@ class CA3:
         self.maxiter_ = maxiter
         self.normalise_weights = normalise_weights
         self.canonical_correlations_ = None
+        self.projections_ = None
 
     def fit(self, *data_sets: tuple) -> None:
         """
@@ -81,25 +83,26 @@ class CA3:
             self.dims_
         ), "Model fitted with different number of datasets."
 
-        projects = [
+        self.projections_ = [
             np.stack(
                 [
-                    self._normalise(img_data @ wx)
+                    self._normalise(self._normalise(X_data) @ wx)
                     if self.normalise_weights
-                    else img_data @ wx,
-                    self._normalise(beh_data @ wb)
+                    else X_data @ wx,
+                    self._normalise(self._normalise(Y_data) @ wb)
                     if self.normalise_weights
-                    else beh_data @ wb,
+                    else Y_data @ wb,
                 ],
                 axis=0,
             )
-            for (img_data, beh_data), (wx, wb) in zip(data_sets, self.weights_)
+            for (X_data, Y_data), (wx, wb) in zip(data_sets, self.weights_)
         ]
 
         self.canonical_correlations_ = [
-            np.corrcoef(data_sets[0], data_sets[1])[0, 1] for data_sets in projects
+            np.corrcoef(data_sets[0], data_sets[1])[0, 1]
+            for data_sets in self.projections_
         ]
-        return projects
+        return self.projections_
 
     def fit_transform(self, *data_sets) -> list[np.ndarray]:
         """
@@ -143,6 +146,34 @@ class CA3:
         ), "Model must be fitted and transfomed before correlations can be returned"
         return self.canonical_correlations_
 
+    def compute_loadings(
+        self, *data_sets: tuple
+    ) -> list[tuple[np.ndarray, np.ndarray]]:
+        """
+        Computes canonical loadings for each study.
+
+        Parameters
+        ----------
+        data_sets: tuple
+            List of (img_data, beh_data) pairs.
+
+        Returns
+        -------
+        loadings: list of tuples
+            Each tuple contains (img_loadings, beh_loadings), i.e., correlations between
+            original features and their respective canonical variates.
+        """
+        assert (
+            self.projections_ is not None
+        ), "Model must be fitted and transfomed before computing loadings."
+        return [
+            (
+                np.corrcoef(self._normalise(X_data).T, x_proj, rowvar=True)[:-1, -1],
+                np.corrcoef(self._normalise(Y_data).T, y_proj, rowvar=True)[:-1, -1],
+            )
+            for (X_data, Y_data), (x_proj, y_proj) in zip(data_sets, self.projections_)
+        ]
+
     def _weight_intialization(self) -> np.ndarray:
         """
         Method to define a set of random starting
@@ -162,7 +193,7 @@ class CA3:
         init_weights = []
 
         for idx, _ in enumerate(self.dims_):
-            s_xb = self.covariances_[f"s_img{idx+1}_behav{idx+1}"]
+            s_xb = self.covariances_[f"s_X{idx+1}_Y{idx+1}"]
             # Perform SVD on the cross-covariance matrix
             try:
                 U, _, Vt = np.linalg.svd(s_xb, full_matrices=False)
@@ -171,8 +202,8 @@ class CA3:
 
             wx = U[:, 0]
             wb = Vt.T[:, 0]
-            s_xx = self.covariances_[f"s_img{idx+1}_img{idx+1}"]
-            s_bb = self.covariances_[f"s_behav{idx+1}_behav{idx+1}"]
+            s_xx = self.covariances_[f"s_X{idx+1}_X{idx+1}"]
+            s_bb = self.covariances_[f"s_Y{idx+1}_Y{idx+1}"]
 
             wx = wx / np.sqrt(wx.T @ s_xx @ wx)
             wb = wb / np.sqrt(wb.T @ s_bb @ wb)
@@ -201,20 +232,20 @@ class CA3:
 
         """
         for idx, study_pair in enumerate(data_sets):
-            img_data, behav_data = study_pair
+            X_data, Y_data = study_pair
             self._data_able_to_process(study_pair)
-            behav_data = self._normalise(behav_data)
-            img_data = self._normalise(img_data)
+            X_data = self._normalise(X_data)
+            Y_data = self._normalise(Y_data)
             study_num = idx + 1
             try:
-                self.covariances_[f"s_behav{study_num}_behav{study_num}"] = (
-                    self._create_covariance_matrix(behav_data, behav_data)
+                self.covariances_[f"s_Y{study_num}_Y{study_num}"] = (
+                    self._create_covariance_matrix(Y_data, Y_data)
                 )
-                self.covariances_[f"s_img{study_num}_img{study_num}"] = (
-                    self._create_covariance_matrix(img_data, img_data)
+                self.covariances_[f"s_X{study_num}_X{study_num}"] = (
+                    self._create_covariance_matrix(X_data, X_data)
                 )
-                self.covariances_[f"s_img{study_num}_behav{study_num}"] = (
-                    self._create_covariance_matrix(img_data, behav_data)
+                self.covariances_[f"s_X{study_num}_Y{study_num}"] = (
+                    self._create_covariance_matrix(X_data, Y_data)
                 )
 
             except Exception as e:
@@ -250,7 +281,7 @@ class CA3:
             study_pair[0].shape[0] == study_pair[1].shape[0]
         ), f"Mismatch between ({study_pair[0].shape[0]} and {study_pair[1].shape[0]})"
 
-    def _optimise(self):
+    def _optimise(self) -> None:
         """
         Method to minimise the
         objective function
@@ -274,10 +305,19 @@ class CA3:
 
     def _get_dimensions(self, *data_sets) -> None:
         """
-        Method to check the number of dimensions
-        that the
+        Method to get the dimensions
+        of the data
+
+        Parameters
+        ----------
+        *data_sets: tuple
+            tuple of datasets
+
+        Returns
+        -------
+        None
         """
-        self.dims_ = [(behav.shape[1], img.shape[1]) for behav, img in data_sets]
+        self.dims_ = [(Y.shape[1], X.shape[1]) for X, Y in data_sets]
 
     def _split_weights(self, weights: np.ndarray) -> list[np.ndarray]:
         """
@@ -298,11 +338,11 @@ class CA3:
         """
         offset = 0
         split_weights = []
-        for img_dim, behav_dim in self.dims_:
-            wx = weights[offset : offset + img_dim]
-            offset += img_dim
-            wb = weights[offset : offset + behav_dim]
-            offset += behav_dim
+        for X_dim, Y_dim in self.dims_:
+            wx = weights[offset : offset + X_dim]
+            offset += X_dim
+            wb = weights[offset : offset + Y_dim]
+            offset += Y_dim
             split_weights.append((wx, wb))
         return split_weights
 
@@ -332,20 +372,19 @@ class CA3:
         total_loss = 0
         weights_ = self._split_weights(weights)
         for idx, (wx, wb) in enumerate(weights_):
-            s_xb = covariances[f"s_img{idx+1}_behav{idx+1}"]
-            s_xx = covariances[f"s_img{idx+1}_img{idx+1}"]
-            s_bb = covariances[f"s_behav{idx+1}_behav{idx+1}"]
+            s_xb = covariances[f"s_X{idx+1}_Y{idx+1}"]
+            s_xx = covariances[f"s_X{idx+1}_X{idx+1}"]
+            s_bb = covariances[f"s_Y{idx+1}_Y{idx+1}"]
             total_loss += self._cross_cov_term(wb, s_xb, wx)
             total_loss += self._regularization_term(wx, s_xx, l2)
             total_loss += self._regularization_term(wb, s_bb, l2)
 
         # Similarity penalty across imaging weights
         if theta > 0 and len(weights_) > 1:
-            for img_data in range(len(weights_)):
-                for next_img_data in range(img_data + 1, len(weights_)):
-                    total_loss += self._dissimilarity_penality(
-                        theta, weights_[img_data][0], weights_[next_img_data][0]
-                    )
+            total_loss += sum(
+                self._dissimilarity_penality(theta, w1[0], w2[0])
+                for w1, w2 in combinations(weights_, 2)
+            )
 
         return total_loss
 
@@ -394,7 +433,7 @@ class CA3:
         return dmean / std
 
     def _cross_cov_term(
-        self, weight_beh: np.ndarray, cov_mat: np.ndarray, weight_img: np.ndarray
+        self, weight_Y: np.ndarray, cov_mat: np.ndarray, weight_X: np.ndarray
     ) -> np.ndarray:
         """
         Method to calculate the cross covarance term
@@ -402,12 +441,12 @@ class CA3:
 
         Parameters
         ----------
-        weight_beh: np.ndarray
+        weight_Y: np.ndarray
             set of weights for wb
         cov_mat: np.ndarray
              covariance matrix for
              wx wb
-        weight_img: np.ndarray
+        weight_X: np.ndarray
             set of weights for wx
 
         Returns
@@ -415,7 +454,7 @@ class CA3:
         np.ndarray: np.array
             cross covariance term
         """
-        return -weight_img.T @ (cov_mat @ weight_beh)
+        return -weight_X.T @ (cov_mat @ weight_Y)
 
     def _regularization_term(
         self, weight: np.ndarray, cov_mat: np.ndarray, lambda_i: float
@@ -437,12 +476,11 @@ class CA3:
         -------
         float: float
             regularization term of the objective function
-
         """
         return 0.5 * lambda_i * (weight.T @ (cov_mat @ weight) - 1)
 
     def _dissimilarity_penality(
-        self, theta_r: float, img_weight1: np.ndarray, img_weight2: np.ndarray
+        self, theta_r: float, X_weight1: np.ndarray, X_weight2: np.ndarray
     ) -> float:
         """
         Method to return dissimilarity penality
@@ -462,7 +500,7 @@ class CA3:
         float: float
             dissimilarity penality
         """
-        return theta_r * 0.5 * np.sum((img_weight1 - img_weight2) ** 2)
+        return theta_r * 0.5 * np.sum((X_weight1 - X_weight2) ** 2)
 
     def _score(self, *data_sets: tuple) -> float:
         """
@@ -485,10 +523,9 @@ class CA3:
         if self.weights_ is None:
             raise ValueError("Model must be fitted before scoring.")
 
-        result = self.transform(*data_sets)
+        self.transform(*data_sets)
         correlations = self.calculate_canonical_correlations()
-        all_corrs = [corr[0] for corr in correlations.values()]
-        return np.mean(all_corrs)
+        return np.mean(correlations)
 
 
 class GridSearchCA3:
