@@ -1,10 +1,7 @@
 import numpy as np
 from scipy.optimize import minimize
-from itertools import combinations
 
-from itertools import combinations
-
-class C3A:
+class C3A_minimize_neuroimaging:
     """
     C3A class.
     A class to do C3A
@@ -22,6 +19,7 @@ class C3A:
         theta: float = 0,
         tol=1e-6,
         maxiter=500,
+        normalise_weights=True,
     ):
         self.l2_ = l2
         self.theta_ = theta
@@ -32,10 +30,11 @@ class C3A:
         self.covariances_ = {}
         self.tol_ = tol
         self.maxiter_ = maxiter
+        self.normalise_weights = normalise_weights
         self.canonical_correlations_ = None
         self.projections_ = None
 
-    def fit(self, *data_sets: tuple) -> None:
+    def fit(self, X, Y) -> None:
         """
         Method to fit the CA3 model to a given
         set of datasets
@@ -51,13 +50,12 @@ class C3A:
         -------
         None
         """
-        data_sets = self._normalise_input_data(*data_sets)
-        self._calculate_covariance_matricies(*data_sets)
-        self._get_dimensions(*data_sets)
+        self._calculate_covariance_matricies(X, Y)
+        self._get_dimensions(X, Y)
         self._weight_intialization()
         self._optimise()
 
-    def transform(self, *data_sets: tuple) -> list[np.ndarray]:
+    def transform(self, X, Y: tuple) -> list[np.ndarray]:
         """
         Methods to transform data sets into canonical
         projects.
@@ -79,28 +77,14 @@ class C3A:
         assert (
             self.weights_ is not None
         ), "Model must be fitted before transform can be called."
-        assert len(data_sets) == len(
-            self.dims_
-        ), "Model fitted with different number of datasets."
-        data_sets = self._normalise_input_data(*data_sets)
-        self.projections_ = [
-            np.stack(
-                [
-                    self._normalise(X_data @ wx),
-                    self._normalise(Y_data @ wb),
-                ],
-                axis=0,
-            )
-            for (X_data, Y_data), (wx, wb) in zip(data_sets, self.weights_)
-        ]
 
-        self.canonical_correlations_ = [
-            np.corrcoef(data_sets[0], data_sets[1])[0, 1]
-            for data_sets in self.projections_
-        ]
+        x_projections = self._normalise(self._normalise(X) @ self.weights_[0])
+        y_projections = self._normalise(self._normalise(Y) @ self.weights_[1])
+        self.projections_ = np.stack([x_projections, y_projections])
+        self.canonical_correlations_ = np.corrcoef(x_projections, y_projections)[0, 1] 
         return self.projections_
 
-    def fit_transform(self, *data_sets) -> list[np.ndarray]:
+    def fit_transform(self, X, Y) -> list[np.ndarray]:
         """
         Methods to fit a CA3 model and then transform
         the data.
@@ -119,8 +103,8 @@ class C3A:
             projections of each dataset in
             ndarry of n_components by n_samples.
         """
-        self.fit(*data_sets)
-        return self.transform(*data_sets)
+        self.fit(X, Y)
+        return self.transform(X, Y)
 
     def calculate_canonical_correlations(self) -> list[float]:
         """
@@ -141,50 +125,27 @@ class C3A:
             self.canonical_correlations_ is not None
         ), "Model must be fitted and transfomed before correlations can be returned"
         return self.canonical_correlations_
-
-    def compute_loadings(
-        self, *data_sets: tuple
-    ) -> list[tuple[np.ndarray, np.ndarray]]:
+        
+    def compute_loadings(self, X, Y) -> list[tuple[np.ndarray, np.ndarray]]:
         """
         Computes canonical loadings for each study.
-
+        
         Parameters
         ----------
         data_sets: tuple
-            List of (X, Y) pairs.
-
-        Returns
-        -------
-        loadings: list of tuples
-            Each tuple contains (X, Y), i.e., correlations between
-            original features and their respective canonical variates.
-        """
-        assert (
-            self.projections_ is not None
-        ), "Model must be fitted and transfomed before computing loadings."
-        data_sets = self._normalise_input_data(*data_sets)
-        return [
-            (
-                np.corrcoef(X_data.T, x_proj, rowvar=True)[:-1, -1],
-                np.corrcoef(Y_data.T, y_proj, rowvar=True)[:-1, -1],
-            )
-            for (X_data, Y_data), (x_proj, y_proj) in zip(data_sets, self.projections_)
-        ]
-    def _normalise_input_data(self, *data_sets) -> tuple:
-        """
-        Normalise input data.
-
-        Parameters
-        ----------
-        data_sets: tuple
-            List of (X, Y) pairs.
+            List of (img_data, beh_data) pairs.
         
         Returns
         -------
-        data_set: tuple
-            tuple of normalised data
+        loadings: list of tuples
+            Each tuple contains (img_loadings, beh_loadings), i.e., correlations between
+            original features and their respective canonical variates.
         """
-        return tuple((self._normalise(X), self._normalise(Y)) for X, Y in data_sets)
+        assert self.projections_ is not None, "Model must be fitted and transfomed before computing loadings."
+        return [
+            np.corrcoef(self._normalise(X).T, self.projections_[0], rowvar=True)[:-1, -1],
+            np.corrcoef(self._normalise(Y).T, self.projections_[1], rowvar=True)[:-1, -1]
+            ]
     
     def _weight_intialization(self) -> np.ndarray:
         """
@@ -202,30 +163,23 @@ class C3A:
         np.ndarrray
             array of numpy values
         """
-        init_weights = []
 
-        for idx, _ in enumerate(self.dims_):
-            s_xb = self.covariances_[f"s_X{idx+1}_Y{idx+1}"]
-            # Perform SVD on the cross-covariance matrix
-            try:
-                U, _, Vt = np.linalg.svd(s_xb, full_matrices=False)
-            except np.linalg.LinAlgError as e:
-                raise RuntimeError(f"SVD failed for dataset {idx+1}: {e}")
+        s_xb = self.covariances_[f"s_X_Y"]
+        try:
+            U, _, Vt = np.linalg.svd(s_xb, full_matrices=False)
+        except np.linalg.LinAlgError as e:
+            raise RuntimeError(f"SVD failed due to: {e}")
 
-            wx = U[:, 0]
-            wb = Vt.T[:, 0]
-            s_xx = self.covariances_[f"s_X{idx+1}_X{idx+1}"]
-            s_bb = self.covariances_[f"s_Y{idx+1}_Y{idx+1}"]
+        wx = U[:, 0]
+        wb = Vt.T[:, 0]
+        s_xx = self.covariances_[f"s_X_X"]
+        s_bb = self.covariances_[f"s_Y_Y"]
 
-            wx = wx / np.sqrt(wx.T @ s_xx @ wx + 1e-8)
-            wb = wb / np.sqrt(wb.T @ s_bb @ wb + 1e-8)
+        wx = wx / np.sqrt(wx.T @ s_xx @ wx)
+        wb = wb / np.sqrt(wb.T @ s_bb @ wb)
+        self.intial_weights_ = np.concat([wx, wb])
 
-            init_weights.extend(wx)
-            init_weights.extend(wb)
-
-        self.intial_weights_ = np.array(init_weights)
-
-    def _calculate_covariance_matricies(self, *data_sets) -> dict:
+    def _calculate_covariance_matricies(self, X_data, Y_data) -> dict:
         """
         Calculates covariance and auto covariance
         matricies
@@ -243,25 +197,24 @@ class C3A:
             dictionary of covariance and auto-covariance matrices
 
         """
-        for idx, study_pair in enumerate(data_sets):
-            X_data, Y_data = study_pair
-            self._data_able_to_process(study_pair)
-            study_num = idx + 1
-            try:
-                self.covariances_[f"s_Y{study_num}_Y{study_num}"] = (
-                    self._create_covariance_matrix(Y_data, Y_data)
-                )
-                self.covariances_[f"s_X{study_num}_X{study_num}"] = (
-                    self._create_covariance_matrix(X_data, X_data)
-                )
-                self.covariances_[f"s_X{study_num}_Y{study_num}"] = (
-                    self._create_covariance_matrix(X_data, Y_data)
-                )
+        self._data_able_to_process(X_data, Y_data)
+        X_data = self._normalise(X_data)
+        Y_data = self._normalise(Y_data)
 
-            except Exception as e:
-                print(f"Error calculating covariances for Study {study_num}: {e}")
+        try:
+            self.covariances_["s_Y_Y"] = (
+                self._create_covariance_matrix(Y_data, Y_data)
+            )
+            self.covariances_[f"s_X_X"] = (
+                self._create_covariance_matrix(X_data, X_data)
+            )
+            self.covariances_[f"s_X_Y"] = (
+                self._create_covariance_matrix(X_data, Y_data)
+            )
+        except Exception as e:
+            print(f"Error calculating covariances due to: {e}")
 
-    def _data_able_to_process(self, study_pair: tuple) -> bool:
+    def _data_able_to_process(self, X_data, Y_data) -> bool:
         """
         Method to check that data
         is in correct format to be processed
@@ -278,18 +231,15 @@ class C3A:
         bool: boolean
             bool of if failed or not
         """
-        assert (
-            isinstance(study_pair, (tuple, list)) and len(study_pair) == 2
-        ), "Given argument isn't a pair of datasets"
-        assert isinstance(study_pair[0], np.ndarray) or not isinstance(
-            study_pair[1], np.ndarray
+        assert isinstance(Y_data, np.ndarray) or not isinstance(
+            X_data, np.ndarray
         ), "Data provided ins't numpy array"
-        assert (study_pair[0].shape[0] != 0) and (
-            study_pair[1].shape[0] != 0
+        assert (X_data.shape[0] != 0) and (
+            Y_data.shape[0] != 0
         ), "Study pairs contains not data"
         assert (
-            study_pair[0].shape[0] == study_pair[1].shape[0]
-        ), f"Mismatch between ({study_pair[0].shape[0]} and {study_pair[1].shape[0]})"
+            X_data.shape[0] == Y_data.shape[0]
+        ), f"Mismatch between ({X_data.shape[0]} and {Y_data.shape[0]})"
 
     def _optimise(self) -> None:
         """
@@ -313,7 +263,7 @@ class C3A:
         self.best_loss = model.fun
         self.weights_ = self._split_weights(model.x)
 
-    def _get_dimensions(self, *data_sets) -> None:
+    def _get_dimensions(self, X, Y) -> None:
         """
         Method to get the dimensions
         of the data
@@ -322,12 +272,12 @@ class C3A:
         ----------
         *data_sets: tuple
             tuple of datasets
-
+        
         Returns
         -------
         None
         """
-        self.dims_ = [(X.shape[1], Y.shape[1]) for X, Y in data_sets]
+        self.dims_ = [X.shape[1], Y.shape[1]]
 
     def _split_weights(self, weights: np.ndarray) -> list[np.ndarray]:
         """
@@ -346,15 +296,9 @@ class C3A:
             wx and wb
 
         """
-        offset = 0
-        split_weights = []
-        for X_dim, Y_dim in self.dims_:
-            wx = weights[offset : offset + X_dim]
-            offset += X_dim
-            wb = weights[offset : offset + Y_dim]
-            offset += Y_dim
-            split_weights.append((wx, wb))
-        return split_weights
+        wx = weights[0 : self.dims_[0]]
+        wb = weights[self.dims_[0]:  self.dims_[1]+1]
+        return [wx, wb]
 
     def _objective_function(
         self, weights: np.ndarray, covariances: dict, theta: float, l2: float
@@ -380,21 +324,20 @@ class C3A:
            total loss of the objective function
         """
         total_loss = 0
-        weights_ = self._split_weights(weights)
-        for idx, (wx, wb) in enumerate(weights_):
-            s_xb = covariances[f"s_X{idx+1}_Y{idx+1}"]
-            s_xx = covariances[f"s_X{idx+1}_X{idx+1}"]
-            s_bb = covariances[f"s_Y{idx+1}_Y{idx+1}"]
-            total_loss += self._cross_cov_term(wb, s_xb, wx)
-            total_loss += self._regularization_term(wx, s_xx, l2)
-            total_loss += self._regularization_term(wb, s_bb, l2)
-            
-        # Similarity penalty across imaging weights
-        if theta > 0 and len(weights_) > 1:
-            total_loss += sum(
-                self._dissimilarity_penality(theta, w1[0], w2[0])
-                for w1, w2 in combinations(weights_, 2)
-            )
+        wx, wb = self._split_weights(weights)
+        s_xb = covariances["s_X_Y"]
+        s_xx = covariances["s_X_X"]
+        s_bb = covariances["s_Y_Y"]
+        total_loss += self._cross_cov_term(wb, s_xb, wx)
+        total_loss += self._regularization_term(wx, s_xx, l2)
+        total_loss += self._regularization_term(wb, s_bb, l2)
+        
+        ## Similarity penalty across imaging weights, this needs changing
+        #if theta > 0 and len(weights_) > 1:
+        #    total_loss += sum(
+        #        self._dissimilarity_penality(theta, w1[0], w2[0])
+        #        for w1, w2 in combinations(weights_, 2)
+        #    )
 
         return total_loss
 
@@ -487,7 +430,7 @@ class C3A:
         float: float
             regularization term of the objective function
         """
-        return 0.5 * lambda_i * (weight.T @ (cov_mat @ weight) -1)
+        return 0.5 * lambda_i * (weight.T @ (cov_mat @ weight) - 1)
 
     def _dissimilarity_penality(
         self, theta_r: float, X_weight1: np.ndarray, X_weight2: np.ndarray
@@ -512,7 +455,7 @@ class C3A:
         """
         return theta_r * 0.5 * np.sum((X_weight1 - X_weight2) ** 2)
 
-    def _score(self, *data_sets: tuple) -> float:
+    def _score(self, X, Y) -> float:
         """
         Method used to evaluate model performance.
 
@@ -533,66 +476,6 @@ class C3A:
         if self.weights_ is None:
             raise ValueError("Model must be fitted before scoring.")
 
-        self.transform(*data_sets)
+        self.transform(X, Y)
         correlations = self.calculate_canonical_correlations()
         return np.mean(correlations)
-
-
-class GridSearchC3A:
-    def __init__(self, l2_values, theta=0, tol=1e-6, maxiter=500, verbose=False):
-        """
-        Custom grid search to find the best l2 value for the CA3 model.
-
-        Parameters
-        ----------
-        l2_values : list of float
-            The l2 regularization parameters to search over.
-        theta : float
-            The dissimilarity regularization parameter (shared across all models).
-        tol : float
-            Tolerance for optimization.
-        maxiter : int
-            Maximum number of optimization iterations.
-        verbose : bool
-            If True, print progress during search.
-        """
-        self.l2_values = l2_values
-        self.theta = theta
-        self.tol = tol
-        self.maxiter = maxiter
-        self.verbose = verbose
-        self.best_model_ = None
-        self.best_score_ = -np.inf
-        self.best_l2_ = None
-        self.all_results_ = []
-
-    def fit(self, *data_sets):
-        """
-        Fit CA3 models with each l2 value and track the one with best score.
-        """
-        for l2 in self.l2_values:
-            model = C3A(l2=l2, theta=self.theta, tol=self.tol, maxiter=self.maxiter)
-            model.fit(*data_sets)
-            score = model._score(*data_sets)
-
-            self.all_results_.append((l2, score))
-
-            if self.verbose:
-                print(f"l2: {l2:.4f}, score: {score:.4f}")
-
-            if score > self.best_score_:
-                self.best_score_ = score
-                self.best_model_ = model
-                self.best_l2_ = l2
-
-        if self.verbose:
-            print(f"Best l2: {self.best_l2_:.4f}, Best score: {self.best_score_:.4f}")
-
-    def get_best_model(self):
-        return self.best_model_
-
-    def get_best_l2(self):
-        return self.best_l2_
-
-    def get_all_results(self):
-        return self.all_results_

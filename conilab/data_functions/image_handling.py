@@ -337,7 +337,8 @@ def decompose_cifti(img: object) -> dict:
     """
     data = img.get_fdata(dtype=np.float32)
     brain_models = img.header.get_axis(1)  # Assume we know this
-    return {
+    try:
+        cifti_data = {
         "vol": volume_from_cifti(data, brain_models),
         "L_surf": surf_data_from_cifti(
             data, brain_models, "CIFTI_STRUCTURE_CORTEX_LEFT"
@@ -346,3 +347,13 @@ def decompose_cifti(img: object) -> dict:
             data, brain_models, "CIFTI_STRUCTURE_CORTEX_RIGHT"
         ),
     }
+    except Exception:
+        cifti_data = {
+        "L_surf": surf_data_from_cifti(
+            data, brain_models, "CIFTI_STRUCTURE_CORTEX_LEFT"
+        ),
+        "R_surf": surf_data_from_cifti(
+            data, brain_models, "CIFTI_STRUCTURE_CORTEX_RIGHT"
+        ),
+        }
+    return cifti_data
