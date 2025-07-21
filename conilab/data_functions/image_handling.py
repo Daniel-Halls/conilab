@@ -1,6 +1,7 @@
 import nibabel as nib
 import numpy as np
 from sklearn.preprocessing import StandardScaler
+from scipy.spatial import cKDTree
 
 
 def save_gifti(data: np.ndarray, output_path: str) -> None:
@@ -357,3 +358,27 @@ def decompose_cifti(img: object) -> dict:
         ),
         }
     return cifti_data
+
+def downsample(data_to_downsample: np.ndarray, lowres_surface: np.ndarray, high_res_surface: np.ndarray) -> np.ndarray:
+    """
+    Function to downsample surface data.
+
+    Parameters
+    ----------
+    data_to_downsample: np.ndarray
+        high res data to downsample
+    lowres_surface: np.ndarray
+        co-ordinates from low res data.
+        this is nb.load(surface).darrays[0].data
+    high_res_surface: np.ndarray
+        co-ordinates from highres data.
+        this is nb.load(surface).darrays[0].data
+
+    Returns
+    -------
+    np.ndarray: np.array
+        array of downsampled data
+    """
+    tree = cKDTree(high_res_surface)
+    _, indices = tree.query(lowres_surface, k=1) 
+    return data_to_downsample[indices]
