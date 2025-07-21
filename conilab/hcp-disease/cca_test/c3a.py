@@ -2,7 +2,6 @@ import numpy as np
 from scipy.optimize import minimize
 from itertools import combinations
 
-from itertools import combinations
 
 class C3A:
     """
@@ -76,12 +75,12 @@ class C3A:
             projections of each dataset in
             ndarry of n_components by n_samples
         """
-        assert (
-            self.weights_ is not None
-        ), "Model must be fitted before transform can be called."
-        assert len(data_sets) == len(
-            self.dims_
-        ), "Model fitted with different number of datasets."
+        assert self.weights_ is not None, (
+            "Model must be fitted before transform can be called."
+        )
+        assert len(data_sets) == len(self.dims_), (
+            "Model fitted with different number of datasets."
+        )
         data_sets = self._normalise_input_data(*data_sets)
         self.projections_ = [
             np.stack(
@@ -137,9 +136,9 @@ class C3A:
         canonical_correlations: list[float]
             list of canonical correlations
         """
-        assert (
-            self.canonical_correlations_ is not None
-        ), "Model must be fitted and transfomed before correlations can be returned"
+        assert self.canonical_correlations_ is not None, (
+            "Model must be fitted and transfomed before correlations can be returned"
+        )
         return self.canonical_correlations_
 
     def compute_loadings(
@@ -159,9 +158,9 @@ class C3A:
             Each tuple contains (X, Y), i.e., correlations between
             original features and their respective canonical variates.
         """
-        assert (
-            self.projections_ is not None
-        ), "Model must be fitted and transfomed before computing loadings."
+        assert self.projections_ is not None, (
+            "Model must be fitted and transfomed before computing loadings."
+        )
         data_sets = self._normalise_input_data(*data_sets)
         return [
             (
@@ -170,6 +169,7 @@ class C3A:
             )
             for (X_data, Y_data), (x_proj, y_proj) in zip(data_sets, self.projections_)
         ]
+
     def _normalise_input_data(self, *data_sets) -> tuple:
         """
         Normalise input data.
@@ -178,14 +178,14 @@ class C3A:
         ----------
         data_sets: tuple
             List of (X, Y) pairs.
-        
+
         Returns
         -------
         data_set: tuple
             tuple of normalised data
         """
         return tuple((self._normalise(X), self._normalise(Y)) for X, Y in data_sets)
-    
+
     def _weight_intialization(self) -> np.ndarray:
         """
         Method to define a set of random starting
@@ -205,17 +205,17 @@ class C3A:
         init_weights = []
 
         for idx, _ in enumerate(self.dims_):
-            s_xb = self.covariances_[f"s_X{idx+1}_Y{idx+1}"]
+            s_xb = self.covariances_[f"s_X{idx + 1}_Y{idx + 1}"]
             # Perform SVD on the cross-covariance matrix
             try:
                 U, _, Vt = np.linalg.svd(s_xb, full_matrices=False)
             except np.linalg.LinAlgError as e:
-                raise RuntimeError(f"SVD failed for dataset {idx+1}: {e}")
+                raise RuntimeError(f"SVD failed for dataset {idx + 1}: {e}")
 
             wx = U[:, 0]
             wb = Vt.T[:, 0]
-            s_xx = self.covariances_[f"s_X{idx+1}_X{idx+1}"]
-            s_bb = self.covariances_[f"s_Y{idx+1}_Y{idx+1}"]
+            s_xx = self.covariances_[f"s_X{idx + 1}_X{idx + 1}"]
+            s_bb = self.covariances_[f"s_Y{idx + 1}_Y{idx + 1}"]
 
             wx = wx / np.sqrt(wx.T @ s_xx @ wx + 1e-8)
             wb = wb / np.sqrt(wb.T @ s_bb @ wb + 1e-8)
@@ -278,18 +278,18 @@ class C3A:
         bool: boolean
             bool of if failed or not
         """
-        assert (
-            isinstance(study_pair, (tuple, list)) and len(study_pair) == 2
-        ), "Given argument isn't a pair of datasets"
+        assert isinstance(study_pair, (tuple, list)) and len(study_pair) == 2, (
+            "Given argument isn't a pair of datasets"
+        )
         assert isinstance(study_pair[0], np.ndarray) or not isinstance(
             study_pair[1], np.ndarray
         ), "Data provided ins't numpy array"
-        assert (study_pair[0].shape[0] != 0) and (
-            study_pair[1].shape[0] != 0
-        ), "Study pairs contains not data"
-        assert (
-            study_pair[0].shape[0] == study_pair[1].shape[0]
-        ), f"Mismatch between ({study_pair[0].shape[0]} and {study_pair[1].shape[0]})"
+        assert (study_pair[0].shape[0] != 0) and (study_pair[1].shape[0] != 0), (
+            "Study pairs contains not data"
+        )
+        assert study_pair[0].shape[0] == study_pair[1].shape[0], (
+            f"Mismatch between ({study_pair[0].shape[0]} and {study_pair[1].shape[0]})"
+        )
 
     def _optimise(self) -> None:
         """
@@ -382,13 +382,13 @@ class C3A:
         total_loss = 0
         weights_ = self._split_weights(weights)
         for idx, (wx, wb) in enumerate(weights_):
-            s_xb = covariances[f"s_X{idx+1}_Y{idx+1}"]
-            s_xx = covariances[f"s_X{idx+1}_X{idx+1}"]
-            s_bb = covariances[f"s_Y{idx+1}_Y{idx+1}"]
+            s_xb = covariances[f"s_X{idx + 1}_Y{idx + 1}"]
+            s_xx = covariances[f"s_X{idx + 1}_X{idx + 1}"]
+            s_bb = covariances[f"s_Y{idx + 1}_Y{idx + 1}"]
             total_loss += self._cross_cov_term(wb, s_xb, wx)
             total_loss += self._regularization_term(wx, s_xx, l2)
             total_loss += self._regularization_term(wb, s_bb, l2)
-            
+
         # Similarity penalty across imaging weights
         if theta > 0 and len(weights_) > 1:
             total_loss += sum(
@@ -487,7 +487,7 @@ class C3A:
         float: float
             regularization term of the objective function
         """
-        return 0.5 * lambda_i * (weight.T @ (cov_mat @ weight) -1)
+        return 0.5 * lambda_i * (weight.T @ (cov_mat @ weight) - 1)
 
     def _dissimilarity_penality(
         self, theta_r: float, X_weight1: np.ndarray, X_weight2: np.ndarray

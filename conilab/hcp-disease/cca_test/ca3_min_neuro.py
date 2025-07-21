@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.optimize import minimize
 
+
 class C3A_minimize_neuroimaging:
     """
     C3A class.
@@ -74,14 +75,14 @@ class C3A_minimize_neuroimaging:
             projections of each dataset in
             ndarry of n_components by n_samples
         """
-        assert (
-            self.weights_ is not None
-        ), "Model must be fitted before transform can be called."
+        assert self.weights_ is not None, (
+            "Model must be fitted before transform can be called."
+        )
 
         x_projections = self._normalise(self._normalise(X) @ self.weights_[0])
         y_projections = self._normalise(self._normalise(Y) @ self.weights_[1])
         self.projections_ = np.stack([x_projections, y_projections])
-        self.canonical_correlations_ = np.corrcoef(x_projections, y_projections)[0, 1] 
+        self.canonical_correlations_ = np.corrcoef(x_projections, y_projections)[0, 1]
         return self.projections_
 
     def fit_transform(self, X, Y) -> list[np.ndarray]:
@@ -121,32 +122,38 @@ class C3A_minimize_neuroimaging:
         canonical_correlations: list[float]
             list of canonical correlations
         """
-        assert (
-            self.canonical_correlations_ is not None
-        ), "Model must be fitted and transfomed before correlations can be returned"
+        assert self.canonical_correlations_ is not None, (
+            "Model must be fitted and transfomed before correlations can be returned"
+        )
         return self.canonical_correlations_
-        
+
     def compute_loadings(self, X, Y) -> list[tuple[np.ndarray, np.ndarray]]:
         """
         Computes canonical loadings for each study.
-        
+
         Parameters
         ----------
         data_sets: tuple
             List of (img_data, beh_data) pairs.
-        
+
         Returns
         -------
         loadings: list of tuples
             Each tuple contains (img_loadings, beh_loadings), i.e., correlations between
             original features and their respective canonical variates.
         """
-        assert self.projections_ is not None, "Model must be fitted and transfomed before computing loadings."
+        assert self.projections_ is not None, (
+            "Model must be fitted and transfomed before computing loadings."
+        )
         return [
-            np.corrcoef(self._normalise(X).T, self.projections_[0], rowvar=True)[:-1, -1],
-            np.corrcoef(self._normalise(Y).T, self.projections_[1], rowvar=True)[:-1, -1]
-            ]
-    
+            np.corrcoef(self._normalise(X).T, self.projections_[0], rowvar=True)[
+                :-1, -1
+            ],
+            np.corrcoef(self._normalise(Y).T, self.projections_[1], rowvar=True)[
+                :-1, -1
+            ],
+        ]
+
     def _weight_intialization(self) -> np.ndarray:
         """
         Method to define a set of random starting
@@ -164,7 +171,7 @@ class C3A_minimize_neuroimaging:
             array of numpy values
         """
 
-        s_xb = self.covariances_[f"s_X_Y"]
+        s_xb = self.covariances_["s_X_Y"]
         try:
             U, _, Vt = np.linalg.svd(s_xb, full_matrices=False)
         except np.linalg.LinAlgError as e:
@@ -172,8 +179,8 @@ class C3A_minimize_neuroimaging:
 
         wx = U[:, 0]
         wb = Vt.T[:, 0]
-        s_xx = self.covariances_[f"s_X_X"]
-        s_bb = self.covariances_[f"s_Y_Y"]
+        s_xx = self.covariances_["s_X_X"]
+        s_bb = self.covariances_["s_Y_Y"]
 
         wx = wx / np.sqrt(wx.T @ s_xx @ wx)
         wb = wb / np.sqrt(wb.T @ s_bb @ wb)
@@ -202,15 +209,9 @@ class C3A_minimize_neuroimaging:
         Y_data = self._normalise(Y_data)
 
         try:
-            self.covariances_["s_Y_Y"] = (
-                self._create_covariance_matrix(Y_data, Y_data)
-            )
-            self.covariances_[f"s_X_X"] = (
-                self._create_covariance_matrix(X_data, X_data)
-            )
-            self.covariances_[f"s_X_Y"] = (
-                self._create_covariance_matrix(X_data, Y_data)
-            )
+            self.covariances_["s_Y_Y"] = self._create_covariance_matrix(Y_data, Y_data)
+            self.covariances_["s_X_X"] = self._create_covariance_matrix(X_data, X_data)
+            self.covariances_["s_X_Y"] = self._create_covariance_matrix(X_data, Y_data)
         except Exception as e:
             print(f"Error calculating covariances due to: {e}")
 
@@ -231,15 +232,15 @@ class C3A_minimize_neuroimaging:
         bool: boolean
             bool of if failed or not
         """
-        assert isinstance(Y_data, np.ndarray) or not isinstance(
-            X_data, np.ndarray
-        ), "Data provided ins't numpy array"
-        assert (X_data.shape[0] != 0) and (
-            Y_data.shape[0] != 0
-        ), "Study pairs contains not data"
-        assert (
-            X_data.shape[0] == Y_data.shape[0]
-        ), f"Mismatch between ({X_data.shape[0]} and {Y_data.shape[0]})"
+        assert isinstance(Y_data, np.ndarray) or not isinstance(X_data, np.ndarray), (
+            "Data provided ins't numpy array"
+        )
+        assert (X_data.shape[0] != 0) and (Y_data.shape[0] != 0), (
+            "Study pairs contains not data"
+        )
+        assert X_data.shape[0] == Y_data.shape[0], (
+            f"Mismatch between ({X_data.shape[0]} and {Y_data.shape[0]})"
+        )
 
     def _optimise(self) -> None:
         """
@@ -272,7 +273,7 @@ class C3A_minimize_neuroimaging:
         ----------
         *data_sets: tuple
             tuple of datasets
-        
+
         Returns
         -------
         None
@@ -297,7 +298,7 @@ class C3A_minimize_neuroimaging:
 
         """
         wx = weights[0 : self.dims_[0]]
-        wb = weights[self.dims_[0]:  self.dims_[1]+1]
+        wb = weights[self.dims_[0] : self.dims_[1] + 1]
         return [wx, wb]
 
     def _objective_function(
@@ -331,9 +332,9 @@ class C3A_minimize_neuroimaging:
         total_loss += self._cross_cov_term(wb, s_xb, wx)
         total_loss += self._regularization_term(wx, s_xx, l2)
         total_loss += self._regularization_term(wb, s_bb, l2)
-        
+
         ## Similarity penalty across imaging weights, this needs changing
-        #if theta > 0 and len(weights_) > 1:
+        # if theta > 0 and len(weights_) > 1:
         #    total_loss += sum(
         #        self._dissimilarity_penality(theta, w1[0], w2[0])
         #        for w1, w2 in combinations(weights_, 2)
